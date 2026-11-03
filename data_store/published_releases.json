@@ -1,0 +1,30 @@
+[
+  {
+    "id": "rel_sub_1793724813726_68b231cf",
+    "submissionId": "sub_1793724813726_68b231cf",
+    "title": "Utilitarian Noir Trench Showcase",
+    "description": "High contrast silhouette and studio pacing in monochrome.",
+    "creatorName": "Kofi Vance",
+    "tiktokHandle": "@kofivance",
+    "mediaUrl": "/api/media/ot_video_1793724789001_88b1ec78e6a6d939894c1b6c.mp4",
+    "mediaType": "upload",
+    "category": "Fashion & Style",
+    "referenceCode": "OT-CR-2026-C9CC",
+    "publishedAt": "2026-11-03T16:57:16.201Z",
+    "publishedBy": "dlinacre16@gmail.com"
+  },
+  {
+    "id": "rel_sub_1793724335024_1ddf4bf3",
+    "submissionId": "sub_1793724335024_1ddf4bf3",
+    "title": "Midnight Choreography Stems",
+    "description": "Original floorwork choreography to neo-soul track.",
+    "creatorName": "Elena Vance",
+    "tiktokHandle": "@elenavance",
+    "mediaUrl": "https://www.tiktok.com/@elenavance/video/7123456789012345678",
+    "mediaType": "url",
+    "category": "Dance & Choreography",
+    "referenceCode": "OT-CR-2026-B4CB",
+    "publishedAt": "2026-11-03T16:46:48.522Z",
+    "publishedBy": "dlinacre16@gmail.com"
+  }
+]

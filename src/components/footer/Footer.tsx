@@ -3,7 +3,7 @@ import { OnlyTokLogo } from '../brand/OnlyTokLogo';
 import { ExternalLink, ShieldCheck, Mail } from 'lucide-react';
 
 interface FooterProps {
-  onNavigate: (tab: 'home' | 'discover' | 'creators' | 'submit' | 'about') => void;
+  onNavigate: (tab: 'home' | 'discover' | 'creators' | 'submit' | 'about' | 'admin') => void;
   onOpenCompliance: (tab?: 'age' | 'rights' | 'privacy' | 'takedown') => void;
   onOpenBrandModal: () => void;
 }
@@ -151,6 +151,15 @@ export const Footer: React.FC<FooterProps> = ({
                   className="hover:text-white transition-colors text-left cursor-pointer"
                 >
                   Privacy Guidelines
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => onNavigate('admin')}
+                  className="text-[#FF2A85] hover:text-[#ff3d93] font-semibold transition-colors text-left cursor-pointer flex items-center gap-1"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>Editorial Moderation Queue</span>
                 </button>
               </li>
               <li>

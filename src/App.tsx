@@ -1,11 +1,10 @@
 /**
- * ONLYTOK — Complete Website Experience
- * Brand: ONLYTOK (@onlytokgirls)
- * Designed for mobile-first TikTok audience & full 1440px desktop presence.
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useEffect } from 'react';
-import { TopBar } from './components/navigation/TopBar';
+import { TopBar, NavTab } from './components/navigation/TopBar';
 import { MobileTabBar } from './components/navigation/MobileTabBar';
 import { MobileMenu } from './components/navigation/MobileMenu';
 import { Footer } from './components/footer/Footer';
@@ -16,12 +15,16 @@ import { DiscoverView } from './views/DiscoverView';
 import { CreatorsView } from './views/CreatorsView';
 import { SubmitView } from './views/SubmitView';
 import { AboutView } from './views/AboutView';
+import { AdminModerationView } from './views/AdminModerationView';
 
 // Modals
 import { VideoPlayerModal } from './components/video/VideoPlayerModal';
 import { CreatorProfileModal } from './components/creators/CreatorProfileModal';
 import { BrandInquiryModal } from './components/partners/BrandInquiryModal';
 import { ComplianceModal } from './components/legal/ComplianceModal';
+
+// Firebase Connection Tester
+import { testFirestoreConnection } from './lib/firebase';
 
 // Registry
 import {
@@ -31,10 +34,8 @@ import {
   getCreatorById,
 } from './data/contentRegistry';
 
-type NavigationTab = 'home' | 'discover' | 'creators' | 'submit' | 'about';
-
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('home');
+  const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
   // Modals state
@@ -47,14 +48,19 @@ export default function App() {
     tab?: 'age' | 'rights' | 'privacy' | 'takedown';
   }>({ isOpen: false });
 
-  // Handle URL params for direct video or creator links
+  // Boot connection check to Firestore as required by firebase-integration-rpc
+  useEffect(() => {
+    testFirestoreConnection().catch(() => {});
+  }, []);
+
+  // Handle URL params for direct video, creator, or tab links
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get('video');
     const creatorId = params.get('creator');
-    const tabParam = params.get('tab') as NavigationTab;
+    const tabParam = params.get('tab') as NavTab;
 
-    if (tabParam && ['home', 'discover', 'creators', 'submit', 'about'].includes(tabParam)) {
+    if (tabParam && ['home', 'discover', 'creators', 'submit', 'about', 'admin'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
 
@@ -67,7 +73,7 @@ export default function App() {
     }
   }, []);
 
-  const handleNavigate = (tab: NavigationTab) => {
+  const handleNavigate = (tab: NavTab) => {
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -132,6 +138,8 @@ export default function App() {
             onOpenCompliance={openCompliance}
           />
         )}
+
+        {activeTab === 'admin' && <AdminModerationView />}
       </main>
 
       {/* Footer */}

@@ -1,4 +1,9 @@
-import React, { useState, useMemo } from 'react';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   SlidersHorizontal,
@@ -13,6 +18,7 @@ import {
   getAuthorizedCreators,
   CATEGORIES,
   VideoItem,
+  Creator,
 } from '../data/contentRegistry';
 
 interface DiscoverViewProps {
@@ -20,6 +26,20 @@ interface DiscoverViewProps {
   onOpenCreator: (creatorId: string) => void;
   onNavigateSubmit: () => void;
   initialCategory?: string;
+}
+
+interface DynamicRelease {
+  id: string;
+  submissionId: string;
+  title: string;
+  description?: string;
+  creatorName: string;
+  tiktokHandle: string;
+  mediaUrl: string;
+  mediaType?: 'upload' | 'url';
+  category: string;
+  referenceCode: string;
+  publishedAt: string;
 }
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
@@ -32,17 +52,100 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedCreatorId, setSelectedCreatorId] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'featured'>('latest');
+  const [dynamicReleases, setDynamicReleases] = useState<VideoItem[]>([]);
 
-  const creators = getAuthorizedCreators();
+  // Fetch approved published content from backend
+  useEffect(() => {
+    fetch('/api/published-releases')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.releases && Array.isArray(data.releases)) {
+          const mapped: VideoItem[] = data.releases.map((r: DynamicRelease) => ({
+            id: r.id,
+            title: r.title,
+            description: r.description || `Original video release by ${r.creatorName} (${r.tiktokHandle}).`,
+            creatorId: `creator-${r.tiktokHandle.replace('@', '')}`,
+            creatorName: r.creatorName,
+            creatorHandle: r.tiktokHandle,
+            category: r.category,
+            durationSeconds: 30,
+            publishedDate: r.publishedAt ? r.publishedAt.split('T')[0] : '2026-11-03',
+            thumbnailUrl:
+              r.category === 'Fashion & Style'
+                ? '/src/assets/images/onlytok_video_fashion_cover_1793722898133.jpg'
+                : r.category === 'Music & Sounds'
+                ? '/src/assets/images/onlytok_video_music_cover_1793722899627.jpg'
+                : '/src/assets/images/onlytok_video_dance_cover_1793722898857.jpg',
+            audioTrack: {
+              name: 'Original Audio Stem',
+              artist: r.creatorName,
+            },
+            directTikTokUrl: r.mediaUrl,
+            isFeatured: false,
+            engagementTag: 'New Release',
+            isAuthorized: true,
+          }));
+          setDynamicReleases(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const baseCreators = getAuthorizedCreators();
+
+  // Combine static and dynamically approved creators
+  const allCreators = useMemo(() => {
+    const list: Creator[] = [...baseCreators];
+    dynamicReleases.forEach((dr) => {
+      if (!list.some((c) => c.username.toLowerCase() === dr.creatorHandle.toLowerCase())) {
+        list.push({
+          id: dr.creatorId,
+          displayName: dr.creatorName,
+          username: dr.creatorHandle,
+          bio: `Verified creator syndicated on @onlytokgirls under licensed agreement.`,
+          categories: [dr.category],
+          avatarUrl: dr.thumbnailUrl,
+          socialLinks: {
+            tiktok: `https://www.tiktok.com/${dr.creatorHandle}`,
+          },
+          isVerified18Plus: true,
+          totalSpotlights: 1,
+        });
+      }
+    });
+    return list;
+  }, [baseCreators, dynamicReleases]);
 
   const filteredVideos = useMemo(() => {
-    return getAuthorizedVideos({
+    const baseVideos = getAuthorizedVideos({
       category: selectedCategory,
       creatorId: selectedCreatorId === 'all' ? undefined : selectedCreatorId,
       search: searchQuery,
       sort: sortBy,
     });
-  }, [selectedCategory, selectedCreatorId, searchQuery, sortBy]);
+
+    // Filter dynamic releases
+    const matchingDynamic = dynamicReleases.filter((v) => {
+      if (selectedCategory !== 'all' && v.category.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return false;
+      }
+      if (selectedCreatorId !== 'all' && v.creatorId !== selectedCreatorId) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          v.title.toLowerCase().includes(q) ||
+          v.creatorName.toLowerCase().includes(q) ||
+          v.creatorHandle.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
+    const combined = [...matchingDynamic, ...baseVideos];
+    return combined;
+  }, [selectedCategory, selectedCreatorId, searchQuery, sortBy, dynamicReleases]);
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -102,7 +205,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               aria-label="Filter by creator"
             >
               <option value="all">All Verified Creators</option>
-              {creators.map((c) => (
+              {allCreators.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.displayName} ({c.username})
                 </option>

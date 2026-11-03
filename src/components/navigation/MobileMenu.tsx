@@ -1,12 +1,18 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from 'react';
 import { X, ExternalLink, Sparkles, Home, Compass, Users, FilePlus, Info, ShieldCheck } from 'lucide-react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
+import { NavTab } from './TopBar';
 
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  activeTab: 'home' | 'discover' | 'creators' | 'submit' | 'about';
-  onNavigate: (tab: 'home' | 'discover' | 'creators' | 'submit' | 'about') => void;
+  activeTab: NavTab;
+  onNavigate: (tab: NavTab) => void;
   onOpenCompliance: (tab?: 'age' | 'rights' | 'privacy' | 'takedown') => void;
 }
 
@@ -20,7 +26,7 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
   if (!isOpen) return null;
 
   const navItems: Array<{
-    id: 'home' | 'discover' | 'creators' | 'submit' | 'about';
+    id: NavTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
   }> = [
@@ -29,6 +35,7 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     { id: 'creators', label: 'Creators', icon: Users },
     { id: 'submit', label: 'Submit Content', icon: FilePlus },
     { id: 'about', label: 'About', icon: Info },
+    { id: 'admin', label: 'Moderation Queue', icon: ShieldCheck },
   ];
 
   return (

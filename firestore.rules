@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'dlinacre16@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasAll([
+        'creatorName', 'tiktokHandle', 'email', 'videoTitle',
+        'mediaType', 'mediaUrl', 'category', 'confirmedOwnership',
+        'confirmedAdult18', 'acceptedTerms', 'acceptedPrivacy',
+        'status', 'referenceCode'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'creatorName', 'tiktokHandle', 'email', 'videoTitle',
+        'videoDescription', 'mediaType', 'mediaUrl', 'category',
+        'confirmedOwnership', 'confirmedAdult18', 'acceptedTerms',
+        'acceptedPrivacy', 'status', 'referenceCode', 'moderationNotes',
+        'moderatorEmail', 'moderatedAt', 'createdAt', 'updatedAt',
+        'originalFileName', 'fileSizeBytes'
+      ]) &&
+      data.creatorName is string && data.creatorName.size() >= 2 && data.creatorName.size() <= 100 &&
+      data.tiktokHandle is string && data.tiktokHandle.size() >= 2 && data.tiktokHandle.size() <= 50 &&
+      data.email is string && data.email.size() <= 120 &&
+      data.videoTitle is string && data.videoTitle.size() >= 3 && data.videoTitle.size() <= 150 &&
+      data.mediaType in ['upload', 'url'] &&
+      data.mediaUrl is string && data.mediaUrl.size() <= 1000 &&
+      data.category in ['Dance & Choreography', 'Fashion & Style', 'Music & Sounds', 'Comedy & POV', 'Fitness & Active', 'Creative Arts & FX'] &&
+      data.confirmedOwnership == true &&
+      data.confirmedAdult18 == true &&
+      data.acceptedTerms == true &&
+      data.acceptedPrivacy == true &&
+      data.status in ['pending', 'approved', 'rejected', 'correction_requested'] &&
+      data.referenceCode is string && data.referenceCode.size() <= 40;
+    }
+
+    function isValidPublishedRelease(data) {
+      return data.keys().hasAll([
+        'submissionId', 'title', 'creatorName', 'tiktokHandle',
+        'mediaUrl', 'category', 'publishedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'submissionId', 'title', 'description', 'creatorName',
+        'tiktokHandle', 'mediaUrl', 'category', 'publishedAt', 'publishedBy'
+      ]) &&
+      data.title is string && data.title.size() <= 150 &&
+      data.creatorName is string && data.creatorName.size() <= 100 &&
+      data.tiktokHandle is string && data.tiktokHandle.size() <= 50 &&
+      data.mediaUrl is string && data.mediaUrl.size() <= 1000 &&
+      data.category is string && data.category.size() <= 50;
+    }
+
+    // Submissions collection
+    match /submissions/{submissionId} {
+      allow get: if isValidId(submissionId) && (
+        isAdmin() ||
+        (isSignedIn() && existing().email == request.auth.token.email)
+      );
+
+      allow list: if isAdmin();
+
+      allow create: if isValidId(submissionId) &&
+        isValidSubmission(incoming()) &&
+        incoming().status == 'pending';
+
+      allow update: if isValidId(submissionId) && isAdmin() && isValidSubmission(incoming());
+
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // Published releases collection - public read for approved releases
+    match /published_releases/{releaseId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidPublishedRelease(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Moderation audit logs - admin only
+    match /moderation_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Admins registry
+    match /admins/{adminUid} {
+      allow get: if isSignedIn();
+      allow list, write: if isAdmin();
+    }
+  }
+}

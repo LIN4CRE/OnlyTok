@@ -1,0 +1,52 @@
+[
+  {
+    "id": "log_1793725036201_20d5f0",
+    "submissionId": "sub_1793724813726_68b231cf",
+    "videoTitle": "Utilitarian Noir Trench Showcase",
+    "creatorName": "Kofi Vance",
+    "action": "approve",
+    "notes": "",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T16:57:16.201Z"
+  },
+  {
+    "id": "log_1793724408523_b51da5",
+    "submissionId": "sub_1793724335024_1ddf4bf3",
+    "videoTitle": "Midnight Choreography Stems",
+    "creatorName": "Elena Vance",
+    "action": "approve",
+    "notes": "Approved for syndication on @onlytokgirls.",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T16:46:48.522Z"
+  },
+  {
+    "id": "log_1793724391647_2d2aea",
+    "submissionId": "sub_1793724335024_1ddf4bf3",
+    "videoTitle": "Midnight Choreography Stems",
+    "creatorName": "Elena Vance",
+    "action": "request_correction",
+    "notes": "Please verify your TikTok account handle matches video watermark.",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T16:46:31.647Z"
+  },
+  {
+    "id": "log_1793724376450_ce3a0a",
+    "submissionId": "sub_1793724335024_1ddf4bf3",
+    "videoTitle": "Midnight Choreography Stems",
+    "creatorName": "Elena Vance",
+    "action": "remove",
+    "notes": "Temporarily pulled for sound stem adjustment.",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T16:46:16.450Z"
+  },
+  {
+    "id": "log_1793724357660_c8ec9e",
+    "submissionId": "sub_1793724335024_1ddf4bf3",
+    "videoTitle": "Midnight Choreography Stems",
+    "creatorName": "Elena Vance",
+    "action": "approve",
+    "notes": "Verified 18+ and licensed choreography.",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T16:45:57.660Z"
+  }
+]

@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "submission": {
+      "title": "Submission",
+      "description": "Creator video submission for review and syndication on ONLYTOK.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique submission identifier" },
+        "creatorName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "tiktokHandle": { "type": "string", "minLength": 2, "maxLength": 50, "pattern": "^@[a-zA-Z0-9_.]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 120 },
+        "videoTitle": { "type": "string", "minLength": 3, "maxLength": 150 },
+        "videoDescription": { "type": "string", "maxLength": 1000 },
+        "mediaType": { "type": "string", "enum": ["upload", "url"] },
+        "mediaUrl": { "type": "string", "maxLength": 1000 },
+        "category": { "type": "string", "enum": ["Dance & Choreography", "Fashion & Style", "Music & Sounds", "Comedy & POV", "Fitness & Active", "Creative Arts & FX"] },
+        "confirmedOwnership": { "type": "boolean" },
+        "confirmedAdult18": { "type": "boolean" },
+        "acceptedTerms": { "type": "boolean" },
+        "acceptedPrivacy": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "correction_requested"] },
+        "referenceCode": { "type": "string", "maxLength": 30 },
+        "moderationNotes": { "type": "string", "maxLength": 1000 },
+        "moderatorEmail": { "type": "string", "maxLength": 120 },
+        "moderatedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": [
+        "creatorName",
+        "tiktokHandle",
+        "email",
+        "videoTitle",
+        "mediaType",
+        "mediaUrl",
+        "category",
+        "confirmedOwnership",
+        "confirmedAdult18",
+        "acceptedTerms",
+        "acceptedPrivacy",
+        "status",
+        "referenceCode"
+      ]
+    },
+    "publishedRelease": {
+      "title": "PublishedRelease",
+      "description": "Approved and syndicated video release shown publicly.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "submissionId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "creatorName": { "type": "string", "maxLength": 100 },
+        "tiktokHandle": { "type": "string", "maxLength": 50 },
+        "mediaUrl": { "type": "string", "maxLength": 1000 },
+        "category": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "publishedBy": { "type": "string", "maxLength": 120 }
+      },
+      "required": [
+        "submissionId",
+        "title",
+        "creatorName",
+        "tiktokHandle",
+        "mediaUrl",
+        "category",
+        "publishedAt"
+      ]
+    },
+    "moderationLog": {
+      "title": "ModerationLog",
+      "description": "Audit record of an administrative moderation decision.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "submissionId": { "type": "string" },
+        "action": { "type": "string", "enum": ["approve", "reject", "request_correction", "remove"] },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "moderatorEmail": { "type": "string", "maxLength": 120 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["submissionId", "action", "moderatorEmail", "timestamp"]
+    },
+    "admin": {
+      "title": "Admin",
+      "description": "Authorized administrator record for role validation.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["superadmin", "moderator"] },
+        "addedAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/submissions/{submissionId}": {
+      "schema": "submission",
+      "description": "Creator submissions awaiting review or moderated"
+    },
+    "/published_releases/{releaseId}": {
+      "schema": "publishedRelease",
+      "description": "Approved public creator releases"
+    },
+    "/moderation_logs/{logId}": {
+      "schema": "moderationLog",
+      "description": "Audit trail of moderator actions"
+    },
+    "/admins/{adminUid}": {
+      "schema": "admin",
+      "description": "Registered system administrators"
+    }
+  }
+}
