@@ -6,6 +6,7 @@
 import React from 'react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
 import { ExternalLink, Sparkles, Menu, ShieldCheck } from 'lucide-react';
+import { trackTikTokOutboundClick } from '../../utils/analytics';
 
 export type NavTab =
   | 'home'
@@ -104,6 +105,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             href="https://www.tiktok.com/@onlytokgirls"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackTikTokOutboundClick('topbar_header')}
             className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white/90 bg-[#181822] hover:bg-[#222230] border border-white/10 rounded-lg transition-colors whitespace-nowrap"
             aria-label="Follow @onlytokgirls on TikTok"
           >

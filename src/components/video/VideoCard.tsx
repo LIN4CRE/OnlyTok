@@ -41,10 +41,11 @@ export const VideoCard: React.FC<VideoCardProps> = ({
       >
         <img
           src={video.thumbnailUrl}
-          alt={video.title}
+          alt={`Authorized video thumbnail: ${video.title} by ${video.creatorName}`}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
+          decoding="async"
         />
 
         {/* Top Overlay Badges */}

@@ -39,6 +39,15 @@ import {
   getCreatorById,
 } from './data/contentRegistry';
 
+// SEO & Analytics
+import { useSEO } from './utils/useSEO';
+import {
+  trackHomepageVisit,
+  trackTabNavigation,
+  trackCreatorProfileView,
+  trackVideoPlayVisit,
+} from './utils/analytics';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -47,6 +56,14 @@ export default function App() {
   // Modals state
   const [activeVideo, setActiveVideo] = useState<VideoItem | null>(null);
   const [activeCreator, setActiveCreator] = useState<Creator | null>(null);
+
+  // Dynamic SEO meta, canonical, OpenGraph, Twitter, and Schema.org synchronization
+  useSEO({
+    tab: activeTab,
+    subtab: legalSubTab,
+    video: activeVideo,
+    creator: activeCreator,
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isBrandModalOpen, setIsBrandModalOpen] = useState<boolean>(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
@@ -91,15 +108,39 @@ export default function App() {
     }
   }, []);
 
+  // Track initial page load
+  useEffect(() => {
+    trackHomepageVisit();
+  }, []);
+
   const handleNavigate = (tab: NavTab) => {
     setActiveTab(tab);
+    if (tab === 'home') {
+      trackHomepageVisit();
+    } else {
+      trackTabNavigation(tab);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNavigateLegal = (subTab: LegalTab) => {
     setLegalSubTab(subTab);
     setActiveTab('legal');
+    trackTabNavigation(`legal-${subTab}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePlayVideo = (video: VideoItem) => {
+    setActiveVideo(video);
+    trackVideoPlayVisit(video.id, video.title, video.creatorName);
+  };
+
+  const handleOpenCreator = (creatorId: string) => {
+    const creator = getCreatorById(creatorId);
+    if (creator) {
+      setActiveCreator(creator);
+      trackCreatorProfileView(creator.id, creator.displayName);
+    }
   };
 
   const handleOpenReportModal = (video?: VideoItem | null) => {
@@ -114,13 +155,6 @@ export default function App() {
       setReportTargetVideo(null);
     }
     setIsReportModalOpen(true);
-  };
-
-  const handleOpenCreator = (creatorId: string) => {
-    const creator = getCreatorById(creatorId);
-    if (creator) {
-      setActiveCreator(creator);
-    }
   };
 
   const openCompliance = (tab: 'age' | 'rights' | 'privacy' | 'takedown' = 'age') => {
@@ -142,7 +176,7 @@ export default function App() {
         {activeTab === 'home' && (
           <HomeView
             onNavigate={handleNavigate}
-            onPlayVideo={(video) => setActiveVideo(video)}
+            onPlayVideo={handlePlayVideo}
             onOpenCreator={handleOpenCreator}
             onSelectCategory={(catId) => {
               setSelectedCategory(catId);
@@ -153,7 +187,7 @@ export default function App() {
 
         {activeTab === 'discover' && (
           <DiscoverView
-            onPlayVideo={(video) => setActiveVideo(video)}
+            onPlayVideo={handlePlayVideo}
             onOpenCreator={handleOpenCreator}
             onNavigateSubmit={() => handleNavigate('submit')}
             initialCategory={selectedCategory}
@@ -219,7 +253,7 @@ export default function App() {
       <VideoPlayerModal
         video={activeVideo}
         onClose={() => setActiveVideo(null)}
-        onSelectVideo={(video) => setActiveVideo(video)}
+        onSelectVideo={handlePlayVideo}
         onOpenCreator={(creatorId) => {
           setActiveVideo(null);
           handleOpenCreator(creatorId);
@@ -233,7 +267,7 @@ export default function App() {
         onClose={() => setActiveCreator(null)}
         onPlayVideo={(video) => {
           setActiveCreator(null);
-          setActiveVideo(video);
+          handlePlayVideo(video);
         }}
         onOpenSubmit={() => {
           setActiveCreator(null);

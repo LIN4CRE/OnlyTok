@@ -18,6 +18,7 @@ import {
   Flag,
 } from 'lucide-react';
 import { VideoItem, getRelatedVideos } from '../../data/contentRegistry';
+import { trackTikTokOutboundClick } from '../../utils/analytics';
 
 interface VideoPlayerModalProps {
   video: VideoItem | null;
@@ -278,6 +279,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                   href={video.directTikTokUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackTikTokOutboundClick('video_modal_creator', video.directTikTokUrl)}
                   className="p-2 rounded-xl text-white/80 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
                   aria-label="Open on TikTok"
                 >

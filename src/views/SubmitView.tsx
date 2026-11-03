@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { normalizeTikTokHandle } from '../utils/submissionValidator';
+import { trackSubmissionStart, trackSubmissionSuccess } from '../utils/analytics';
 
 export const SubmitView: React.FC = () => {
   // Submission Form State
@@ -68,6 +69,11 @@ export const SubmitView: React.FC = () => {
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [trackResult, setTrackResult] = useState<any | null>(null);
   const [trackError, setTrackError] = useState<string | null>(null);
+
+  // Track submission funnel entry
+  React.useEffect(() => {
+    trackSubmissionStart(category);
+  }, []);
 
   // Handle Video File Upload via XMLHttpRequest for progress reporting
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,6 +256,7 @@ export const SubmitView: React.FC = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         setSubmittedRef(data.referenceCode);
+        trackSubmissionSuccess(data.referenceCode, category, videoTitle.trim());
       } else {
         setErrors({ form: data.error || 'Failed to submit application. Please review fields.' });
       }

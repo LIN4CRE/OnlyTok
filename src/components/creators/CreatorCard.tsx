@@ -20,7 +20,9 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
             <div className="w-16 h-16 rounded-2xl overflow-hidden bg-[#181822] border-2 border-[#FF2A85]/40 group-hover:border-[#FF2A85] transition-colors shadow-md">
               <img
                 src={creator.avatarUrl}
-                alt={creator.displayName}
+                alt={`Verified creator avatar: ${creator.displayName} (${creator.username})`}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             </div>

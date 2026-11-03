@@ -1,6 +1,7 @@
 import React from 'react';
 import { ExternalLink, Sparkles, ShieldCheck, ArrowRight, Play } from 'lucide-react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
+import { trackTikTokOutboundClick } from '../../utils/analytics';
 
 interface HeroSectionProps {
   onOpenCreatorModal: () => void;
@@ -17,7 +18,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       <div className="absolute inset-0 z-0">
         <img
           src="/src/assets/images/onlytok_brand_hero_backdrop_1793722066801.jpg"
-          alt="ONLYTOK Luxury Dark Atmosphere"
+          alt="ONLYTOK Luxury Dark Atmosphere and Vertical Production Backdrop"
+          loading="eager"
+          decoding="async"
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover object-center scale-105"
         />
@@ -70,6 +73,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 href="https://www.tiktok.com/@onlytokgirls"
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => trackTikTokOutboundClick('hero_action_button')}
                 className="w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold text-sm text-white bg-[#181822] hover:bg-[#222230] border border-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-2"
               >
                 <span>Visit @onlytokgirls</span>
@@ -111,7 +115,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="relative rounded-xl overflow-hidden aspect-video mb-5 bg-[#181822] border border-white/5">
                 <img
                   src="/src/assets/images/onlytok_studio_atmosphere_1793722067070.jpg"
-                  alt="ONLYTOK Studio Production Atmosphere"
+                  alt="ONLYTOK Studio Production Atmosphere and Creative Set"
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />

@@ -2,6 +2,7 @@ import React from 'react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
 import { ExternalLink, ShieldCheck, Mail, Scale, FileWarning } from 'lucide-react';
 import { NavTab } from '../navigation/TopBar';
+import { trackTikTokOutboundClick } from '../../utils/analytics';
 
 interface FooterProps {
   onNavigate: (tab: NavTab) => void;
@@ -92,6 +93,7 @@ export const Footer: React.FC<FooterProps> = ({
                   href="https://www.tiktok.com/@onlytokgirls"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackTikTokOutboundClick('footer_social_link')}
                   className="hover:text-white transition-colors flex items-center gap-1.5"
                 >
                   <span>TikTok (@onlytokgirls)</span>

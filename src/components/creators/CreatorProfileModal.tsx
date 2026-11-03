@@ -3,6 +3,7 @@ import { X, ShieldCheck, ExternalLink, Video, Sparkles } from 'lucide-react';
 import { Creator, getAuthorizedVideos, VideoItem } from '../../data/contentRegistry';
 import { VideoCard } from '../video/VideoCard';
 import { EmptyState } from '../common/EmptyState';
+import { trackTikTokOutboundClick } from '../../utils/analytics';
 
 interface CreatorProfileModalProps {
   creator: Creator | null;
@@ -55,7 +56,9 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#181822] border-4 border-[#0F0F14] shadow-2xl">
                 <img
                   src={creator.avatarUrl}
-                  alt={creator.displayName}
+                  alt={`Verified profile photo of ${creator.displayName} (${creator.username})`}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -71,6 +74,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                   href={creator.socialLinks.tiktok}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackTikTokOutboundClick('creator_profile_modal', creator.socialLinks.tiktok)}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-[#FF2A85] transition-all flex items-center gap-1.5"
                 >
                   <span>TikTok Profile</span>
