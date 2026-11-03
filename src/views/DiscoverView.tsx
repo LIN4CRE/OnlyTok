@@ -72,10 +72,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             publishedDate: r.publishedAt ? r.publishedAt.split('T')[0] : '2026-11-03',
             thumbnailUrl:
               r.category === 'Fashion & Style'
-                ? '/src/assets/images/onlytok_video_fashion_cover_1793722898133.jpg'
+                ? '/images/onlytok_video_fashion_cover_1793722898133.jpg'
                 : r.category === 'Music & Sounds'
-                ? '/src/assets/images/onlytok_video_music_cover_1793722899627.jpg'
-                : '/src/assets/images/onlytok_video_dance_cover_1793722898857.jpg',
+                ? '/images/onlytok_video_music_cover_1793722899627.jpg'
+                : '/images/onlytok_video_dance_cover_1793722898857.jpg',
             audioTrack: {
               name: 'Original Audio Stem',
               artist: r.creatorName,

@@ -42,7 +42,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         {/* Background Graphic Asset with Scrim */}
         <div className="absolute inset-0 z-0">
           <img
-            src="/src/assets/images/onlytok_brand_hero_backdrop_1793722066801.jpg"
+            src="/images/onlytok_brand_hero_backdrop_1793722066801.jpg"
             alt="ONLYTOK Luxury Dark Studio Backdrop"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover object-center scale-105"

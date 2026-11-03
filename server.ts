@@ -1143,7 +1143,7 @@ app.post('/api/creators', requireAdminAuth, (req: Request, res: Response) => {
       username: cleanUsername,
       email: email ? email.trim().toLowerCase() : '',
       bio: (bio || '').trim(),
-      avatarUrl: avatarUrl || '/src/assets/images/onlytok_social_share_card_1793722066290.jpg',
+      avatarUrl: avatarUrl || '/images/onlytok_social_share_card_1793722066290.jpg',
       categories: Array.isArray(categories) ? categories : [categories],
       isVerified18Plus: isVerified18Plus === true,
       status: 'active',

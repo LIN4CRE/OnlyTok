@@ -568,7 +568,7 @@ export const AdminModerationView: React.FC = () => {
           username: creatorForm.username,
           email: creatorForm.email,
           bio: creatorForm.bio,
-          avatarUrl: creatorForm.avatarUrl || '/src/assets/images/onlytok_social_share_card_1793722066290.jpg',
+          avatarUrl: creatorForm.avatarUrl || '/images/onlytok_social_share_card_1793722066290.jpg',
           categories: [creatorForm.categories],
           isVerified18Plus: creatorForm.isVerified18Plus,
         }),

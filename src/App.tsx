@@ -164,6 +164,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#09090C] text-[#F4F4F5] selection:bg-[#FF2A85] selection:text-white font-sans flex flex-col justify-between">
       
+      {/* Skip to content (accessibility) */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-[#FF2A85] focus:text-white focus:text-sm focus:font-bold focus:shadow-lg"
+      >
+        Skip to content
+      </a>
+
       {/* Desktop & Tablet Navigation */}
       <TopBar
         activeTab={activeTab}
@@ -172,7 +180,7 @@ export default function App() {
       />
 
       {/* Main View Outlet */}
-      <main className="flex-1">
+      <main id="main-content" className="flex-1" tabIndex={-1}>
         {activeTab === 'home' && (
           <HomeView
             onNavigate={handleNavigate}

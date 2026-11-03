@@ -52,6 +52,23 @@ h1, h2, h3, h4, h5, h6, .font-display {
   background: #FF2A85;
 }
 
+/* Focus visibility for keyboard navigation (accessibility) */
+*:focus-visible {
+  outline: 2px solid #FF2A85;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Glassmorphic utilities */
 .glass-panel {
   background: rgba(18, 18, 23, 0.75);

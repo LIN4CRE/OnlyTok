@@ -26,7 +26,7 @@ export interface SeoMetadata {
 export const BASE_SITE_NAME = 'ONLYTOK';
 export const OFFICIAL_TIKTOK_HANDLE = '@onlytokgirls';
 export const OFFICIAL_TIKTOK_URL = 'https://www.tiktok.com/@onlytokgirls';
-export const DEFAULT_SHARE_IMAGE = '/src/assets/images/onlytok_social_share_card_1793722066290.jpg';
+export const DEFAULT_SHARE_IMAGE = '/images/onlytok_social_share_card_1793722066290.jpg';
 
 export interface GetSeoParams {
   baseUrl?: string;
@@ -207,13 +207,13 @@ export function getSeoMetadata(params: GetSeoParams): SeoMetadata {
         ogType: 'website',
         ogTitle: 'Discover Trending Vertical Videos & Creators | ONLYTOK',
         ogDescription: 'Browse authorised vertical video releases, dance choreography, and original sound stems.',
-        ogImage: `${baseUrl}/src/assets/images/onlytok_studio_atmosphere_1793722067070.jpg`,
+        ogImage: `${baseUrl}/images/onlytok_studio_atmosphere_1793722067070.jpg`,
         ogImageWidth: 1200,
         ogImageHeight: 675,
         twitterCard: 'summary_large_image',
         twitterTitle: 'Discover Trending Videos & Creators | ONLYTOK',
         twitterDescription: 'Browse authorised vertical video releases, choreography, and original sound stems.',
-        twitterImage: `${baseUrl}/src/assets/images/onlytok_studio_atmosphere_1793722067070.jpg`,
+        twitterImage: `${baseUrl}/images/onlytok_studio_atmosphere_1793722067070.jpg`,
         robots: 'index, follow',
         structuredData: [websiteSchema, defaultOrgSchema],
       };
@@ -226,13 +226,13 @@ export function getSeoMetadata(params: GetSeoParams): SeoMetadata {
         ogType: 'website',
         ogTitle: 'Verified Creator Roster & Talent Profiles | ONLYTOK',
         ogDescription: 'Meet the verified creators featured on @onlytokgirls. Authentic personalities, choreographers, stylists, and sound designers.',
-        ogImage: `${baseUrl}/src/assets/images/onlytok_brand_hero_backdrop_1793722066801.jpg`,
+        ogImage: `${baseUrl}/images/onlytok_brand_hero_backdrop_1793722066801.jpg`,
         ogImageWidth: 1200,
         ogImageHeight: 675,
         twitterCard: 'summary_large_image',
         twitterTitle: 'Verified Creator Roster | ONLYTOK',
         twitterDescription: 'Meet the verified creators featured on @onlytokgirls.',
-        twitterImage: `${baseUrl}/src/assets/images/onlytok_brand_hero_backdrop_1793722066801.jpg`,
+        twitterImage: `${baseUrl}/images/onlytok_brand_hero_backdrop_1793722066801.jpg`,
         robots: 'index, follow',
         structuredData: [websiteSchema, defaultOrgSchema],
       };
@@ -264,13 +264,13 @@ export function getSeoMetadata(params: GetSeoParams): SeoMetadata {
         ogType: 'article',
         ogTitle: 'About ONLYTOK — Creator Discovery & Entertainment',
         ogDescription: 'The story behind ONLYTOK (@onlytokgirls): dark luxury entertainment, creator advocacy, and verified vertical storytelling.',
-        ogImage: `${baseUrl}/src/assets/images/onlytok_studio_atmosphere_1793722067070.jpg`,
+        ogImage: `${baseUrl}/images/onlytok_studio_atmosphere_1793722067070.jpg`,
         ogImageWidth: 1200,
         ogImageHeight: 675,
         twitterCard: 'summary_large_image',
         twitterTitle: 'About ONLYTOK — Creator Discovery',
         twitterDescription: 'Discover the story behind ONLYTOK (@onlytokgirls).',
-        twitterImage: `${baseUrl}/src/assets/images/onlytok_studio_atmosphere_1793722067070.jpg`,
+        twitterImage: `${baseUrl}/images/onlytok_studio_atmosphere_1793722067070.jpg`,
         robots: 'index, follow',
         structuredData: [websiteSchema, defaultOrgSchema],
       };
@@ -404,7 +404,8 @@ export function generateSitemapXml(baseUrl: string, videos: VideoItem[] = [], cr
 
   const urlsXml = allUrls
     .map((item) => {
-      const lastmodTag = item.lastmod ? `\n    <lastmod>${item.lastmod}</lastmod>` : `\n    <lastmod>${now}</lastmod>`;
+      const lastmod = (item as { lastmod?: string }).lastmod;
+      const lastmodTag = lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : `\n    <lastmod>${now}</lastmod>`;
       return `  <url>
     <loc>${item.loc}</loc>${lastmodTag}
     <changefreq>${item.changefreq}</changefreq>
