@@ -18,59 +18,42 @@ Log in to Fasthosts -> Domain Names -> onlytok.uk -> DNS / Advanced DNS, and add
 
 These are GitHub Pages' IP addresses. Remove any conflicting A/CNAME records for `@`/`www`.
 
-## Enable GitHub Pages
-Because this repo is private, GitHub Pages requires a paid GitHub plan (Pro/Team/Enterprise) OR make the repo public.
+## Current state (already configured)
+- Repo is now **public**.
+- GitHub Pages is enabled with **legacy** build type, source = `gh-pages` branch, root folder.
+- Custom domain set to `onlytok.uk` (CNAME present in the `gh-pages` branch).
+- Site is already live at https://lin4cre.github.io/OnlyTok/
+- HTTPS will be auto-provisioned by GitHub after DNS points to GitHub (not yet, because DNS still points to Fasthosts).
 
-Option A (keep private, paid plan):
-1. GitHub -> repo Settings -> Pages.
-2. Source: "Deploy from a branch" -> branch `main`, folder `/ (root)` (uses the root `CNAME`).
-   Or use "GitHub Actions" and the workflow below.
-3. Custom domain: `onlytok.uk` (should auto-detect from CNAME).
-4. Enforce HTTPS (enable after DNS propagates).
+## Re-deploying after code changes
+Since GitHub Actions is unavailable on this account (billing lock), rebuild locally and push to `gh-pages`:
 
-Option B (free, public repo):
-1. Settings -> General -> change visibility to Public (only if you're OK with code being public).
-2. Then enable Pages as above.
-
-## GitHub Actions deploy (builds Vite first)
-Create `.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: pages
-  cancel-in-progress: true
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+```sh
+npm ci
+npm run build
+git checkout gh-pages
+# replace root files with dist contents
+rm -rf assets index.html
+cp -r dist/* .
+echo onlytok.uk > CNAME
+git add -A && git commit -m "deploy" && git push origin gh-pages
+git checkout main
 ```
+
+## DNS records to add at Fasthosts (admin.fasthosts.co.uk)
+Log in to Fasthosts -> Domain Names -> onlytok.uk -> DNS / Advanced DNS, and add:
+
+| Type  | Host / Name | Value / Points to                  | TTL  |
+|-------|-------------|------------------------------------|------|
+| A     | @           | 185.199.108.153                    | 3600 |
+| A     | @           | 185.199.109.153                    | 3600 |
+| A     | @           | 185.199.110.153                    | 3600 |
+| A     | @           | 185.199.111.153                    | 3600 |
+| CNAME | www         | LIN4CRE.github.io                  | 3600 |
+
+Remove any conflicting A/CNAME records for `@`/`www`. DNS propagation can take up to 24h.
+
+After propagation, GitHub will issue the HTTPS cert; then enable "Enforce HTTPS" in Settings -> Pages.
 
 Note: GitHub Pages serves only static files. The Express backend (`server.ts`) will NOT run on Pages. If you need the API, deploy the full app to a Node host (Render/Railway/Fly.io) and point onlytok.uk there instead, or use a reverse proxy.
 
