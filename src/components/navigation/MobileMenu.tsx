@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { X, ExternalLink, Sparkles, Home, Compass, Users, FilePlus, Info, ShieldCheck } from 'lucide-react';
+import { X, ExternalLink, Sparkles, Home, Compass, Users, FilePlus, Info, ShieldCheck, Scale, FileWarning, Mail } from 'lucide-react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
 import { NavTab } from './TopBar';
 
@@ -35,6 +35,9 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     { id: 'creators', label: 'Creators', icon: Users },
     { id: 'submit', label: 'Submit Content', icon: FilePlus },
     { id: 'about', label: 'About', icon: Info },
+    { id: 'legal', label: 'Legal & Safety Hub', icon: Scale },
+    { id: 'removal', label: 'Removal Desk', icon: FileWarning },
+    { id: 'contact', label: 'Official Contact', icon: Mail },
     { id: 'admin', label: 'Moderation Queue', icon: ShieldCheck },
   ];
 

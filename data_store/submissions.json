@@ -1,5 +1,37 @@
 [
   {
+    "id": "sub_1793728040304_a9214a3e",
+    "referenceCode": "OT-CR-2026-2E10",
+    "creatorName": "Maya Lin",
+    "tiktokHandle": "@mayalin",
+    "email": "maya@lincreations.co.uk",
+    "videoTitle": "Midnight Precision Floorwork",
+    "videoDescription": "",
+    "mediaType": "url",
+    "mediaUrl": "https://www.tiktok.com/@mayalin/video/7382910482918",
+    "originalFileName": null,
+    "fileSizeBytes": null,
+    "category": "Dance & Choreography",
+    "confirmedOwnership": true,
+    "confirmedAdult18": true,
+    "verificationRecord": {
+      "birthDate": "2002-05-15",
+      "idDocumentType": "UK Driving Licence",
+      "confirmedNoMinors": true,
+      "confirmedNoExplicitPorn": true,
+      "digitalSignature": "Maya Elizabeth Lin",
+      "verifiedAt": "2026-11-03T17:47:20.304Z"
+    },
+    "acceptedTerms": true,
+    "acceptedPrivacy": true,
+    "status": "pending",
+    "createdAt": "2026-11-03T17:47:20.304Z",
+    "updatedAt": "2026-11-03T17:47:20.304Z",
+    "moderationNotes": null,
+    "moderatorEmail": null,
+    "moderatedAt": null
+  },
+  {
     "id": "sub_1793724813726_68b231cf",
     "referenceCode": "OT-CR-2026-C9CC",
     "creatorName": "Kofi Vance",

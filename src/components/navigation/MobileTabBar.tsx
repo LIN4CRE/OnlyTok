@@ -1,9 +1,10 @@
 import React from 'react';
 import { Home, Compass, Users, Sparkles, Info } from 'lucide-react';
+import { NavTab } from './TopBar';
 
 interface MobileTabBarProps {
-  activeTab: 'home' | 'discover' | 'creators' | 'submit' | 'about' | 'admin';
-  onNavigate: (tab: 'home' | 'discover' | 'creators' | 'submit' | 'about' | 'admin') => void;
+  activeTab: NavTab;
+  onNavigate: (tab: NavTab) => void;
 }
 
 export const MobileTabBar: React.FC<MobileTabBarProps> = ({

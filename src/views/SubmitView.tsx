@@ -46,9 +46,14 @@ export const SubmitView: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mandatory Confirmations
+  // Mandatory Confirmations & Multi-Tier Verification
   const [confirmedOwnership, setConfirmedOwnership] = useState<boolean>(false);
   const [confirmedAdult18, setConfirmedAdult18] = useState<boolean>(false);
+  const [birthDate, setBirthDate] = useState<string>('');
+  const [idDocumentType, setIdDocumentType] = useState<string>('UK Driving Licence');
+  const [confirmedNoMinors, setConfirmedNoMinors] = useState<boolean>(false);
+  const [confirmedNoExplicitPorn, setConfirmedNoExplicitPorn] = useState<boolean>(false);
+  const [digitalSignature, setDigitalSignature] = useState<string>('');
   const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState<boolean>(false);
 
@@ -173,6 +178,34 @@ export const SubmitView: React.FC = () => {
       newErrors.confirmedAdult18 = 'Strict 18+ age certification is required.';
     }
 
+    if (!birthDate) {
+      newErrors.birthDate = 'Date of birth is required for strict 18+ age verification.';
+    } else {
+      const dob = new Date(birthDate);
+      if (isNaN(dob.getTime())) {
+        newErrors.birthDate = 'Please enter a valid date of birth.';
+      } else {
+        const ageDiffMs = Date.now() - dob.getTime();
+        const ageDate = new Date(ageDiffMs);
+        const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
+        if (calculatedAge < 18) {
+          newErrors.birthDate = 'Strict Policy: You must be at least 18 years old to submit content.';
+        }
+      }
+    }
+
+    if (!confirmedNoMinors) {
+      newErrors.confirmedNoMinors = 'Mandatory Child Safety: You must certify zero individuals under 18 appear in this video.';
+    }
+
+    if (!confirmedNoExplicitPorn) {
+      newErrors.confirmedNoExplicitPorn = 'Mainstream Standard: You must certify this video contains no explicit pornography or non-consensual imagery.';
+    }
+
+    if (!digitalSignature.trim() || digitalSignature.trim().length < 3) {
+      newErrors.digitalSignature = 'Typed legal full name is required as a legally binding digital signature.';
+    }
+
     if (!acceptedTerms || !acceptedPrivacy) {
       newErrors.terms = 'You must consent to promotional syndication and accept terms & privacy.';
     }
@@ -199,6 +232,11 @@ export const SubmitView: React.FC = () => {
         category,
         confirmedOwnership: true,
         confirmedAdult18: true,
+        birthDate,
+        idDocumentType,
+        confirmedNoMinors: true,
+        confirmedNoExplicitPorn: true,
+        digitalSignature: digitalSignature.trim(),
         acceptedTerms: true,
         acceptedPrivacy: true,
       };
@@ -242,6 +280,11 @@ export const SubmitView: React.FC = () => {
     setUploadedFileMeta(null);
     setConfirmedOwnership(false);
     setConfirmedAdult18(false);
+    setBirthDate('');
+    setIdDocumentType('UK Driving Licence');
+    setConfirmedNoMinors(false);
+    setConfirmedNoExplicitPorn(false);
+    setDigitalSignature('');
     setAcceptedTerms(false);
     setAcceptedPrivacy(false);
     setErrors({});
@@ -605,71 +648,204 @@ export const SubmitView: React.FC = () => {
                   )}
                 </div>
 
-                {/* Mandatory Legal & Governance Checkboxes */}
-                <div className="space-y-3 pt-3 border-t border-white/[0.08]">
-                  <label className="flex items-start gap-3 cursor-pointer p-3.5 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={confirmedOwnership}
-                      onChange={(e) => {
-                        setConfirmedOwnership(e.target.checked);
-                        if (errors.confirmedOwnership) setErrors({ ...errors, confirmedOwnership: '' });
-                      }}
-                      className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
-                    />
-                    <div className="text-xs text-[#A1A1AA] leading-normal">
-                      <strong className="text-white">Copyright Ownership & Permission: </strong>
-                      I confirm I hold full copyright or explicit author permission to submit this video.
+                {/* Multi-Tier Verification & Child Safety Governance */}
+                <div className="pt-4 border-t border-white/[0.08] space-y-4">
+                  
+                  {/* Tier 1 Header */}
+                  <div className="p-3.5 rounded-2xl bg-[#181822] border border-white/10 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-[#FF2A85] font-bold">
+                      <ShieldCheck className="w-4 h-4 text-[#FF2A85]" />
+                      <span>Tier 1: Age & Identity Verification (18+ Mandatory)</span>
                     </div>
-                  </label>
-                  {errors.confirmedOwnership && (
-                    <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedOwnership}
-                    </p>
-                  )}
 
-                  <label className="flex items-start gap-3 cursor-pointer p-3.5 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={confirmedAdult18}
-                      onChange={(e) => {
-                        setConfirmedAdult18(e.target.checked);
-                        if (errors.confirmedAdult18) setErrors({ ...errors, confirmedAdult18: '' });
-                      }}
-                      className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
-                    />
-                    <div className="text-xs text-[#A1A1AA] leading-normal">
-                      <strong className="text-white">Strict Age Verification (18+ Mandatory): </strong>
-                      I certify that the person featured is at least 18 years old and can verify identity prior to syndication.
-                    </div>
-                  </label>
-                  {errors.confirmedAdult18 && (
-                    <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedAdult18}
-                    </p>
-                  )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1">
+                          Date of Birth <span className="text-[#FF2A85]">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={birthDate}
+                          onChange={(e) => {
+                            setBirthDate(e.target.value);
+                            if (errors.birthDate) setErrors({ ...errors, birthDate: '' });
+                          }}
+                          className="w-full px-3 py-2 rounded-xl bg-[#121217] border border-white/10 text-white text-xs focus:outline-none focus:border-[#FF2A85] transition-colors"
+                        />
+                        {birthDate && (
+                          <div className="text-[11px] font-mono mt-1 text-emerald-400">
+                            Age calculated: {(() => {
+                              const dob = new Date(birthDate);
+                              if (isNaN(dob.getTime())) return 'Invalid date';
+                              const ageDiffMs = Date.now() - dob.getTime();
+                              const ageDate = new Date(ageDiffMs);
+                              const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+                              return age >= 18 ? `${age} years old (Verified 18+ eligible)` : `${age} years old (Under 18 - Ineligible)`;
+                            })()}
+                          </div>
+                        )}
+                        {errors.birthDate && (
+                          <p className="text-xs text-rose-400 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> {errors.birthDate}
+                          </p>
+                        )}
+                      </div>
 
-                  <label className="flex items-start gap-3 cursor-pointer p-3.5 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={acceptedTerms && acceptedPrivacy}
-                      onChange={(e) => {
-                        setAcceptedTerms(e.target.checked);
-                        setAcceptedPrivacy(e.target.checked);
-                        if (errors.terms) setErrors({ ...errors, terms: '' });
-                      }}
-                      className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
-                    />
-                    <div className="text-xs text-[#A1A1AA] leading-normal">
-                      <strong className="text-white">Publication Consent & Terms: </strong>
-                      I grant ONLYTOK permission for specified promotional syndication on @onlytokgirls with full attribution and accept the Terms & Privacy Notice.
+                      <div>
+                        <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1">
+                          ID Document for Verification <span className="text-[#FF2A85]">*</span>
+                        </label>
+                        <select
+                          value={idDocumentType}
+                          onChange={(e) => setIdDocumentType(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-[#121217] border border-white/10 text-white text-xs focus:outline-none focus:border-[#FF2A85] transition-colors"
+                        >
+                          <option value="UK Driving Licence">UK Driving Licence</option>
+                          <option value="Passport (UK or International)">Passport (UK or International)</option>
+                          <option value="National Identity Card">National Identity Card</option>
+                          <option value="Verified TikTok Creator Portal Account">Verified TikTok Creator Portal Account</option>
+                        </select>
+                        <p className="text-[10px] text-[#8E8EA0] mt-1">
+                          Editorial team may request proof of this credential prior to syndication.
+                        </p>
+                      </div>
                     </div>
-                  </label>
-                  {errors.terms && (
-                    <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> {errors.terms}
+                  </div>
+
+                  {/* Tier 2: Checkboxes */}
+                  <div className="space-y-2.5">
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={confirmedOwnership}
+                        onChange={(e) => {
+                          setConfirmedOwnership(e.target.checked);
+                          if (errors.confirmedOwnership) setErrors({ ...errors, confirmedOwnership: '' });
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
+                      />
+                      <div className="text-xs text-[#A1A1AA] leading-normal">
+                        <strong className="text-white">Copyright Ownership & Rights: </strong>
+                        I confirm I hold full copyright or explicit author permission to submit this video.
+                      </div>
+                    </label>
+                    {errors.confirmedOwnership && (
+                      <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedOwnership}
+                      </p>
+                    )}
+
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={confirmedAdult18}
+                        onChange={(e) => {
+                          setConfirmedAdult18(e.target.checked);
+                          if (errors.confirmedAdult18) setErrors({ ...errors, confirmedAdult18: '' });
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
+                      />
+                      <div className="text-xs text-[#A1A1AA] leading-normal">
+                        <strong className="text-white">Strict 18+ Adulthood Certification: </strong>
+                        I certify that all individuals featured in this content are at least 18 years of age.
+                      </div>
+                    </label>
+                    {errors.confirmedAdult18 && (
+                      <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedAdult18}
+                      </p>
+                    )}
+
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={confirmedNoMinors}
+                        onChange={(e) => {
+                          setConfirmedNoMinors(e.target.checked);
+                          if (errors.confirmedNoMinors) setErrors({ ...errors, confirmedNoMinors: '' });
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
+                      />
+                      <div className="text-xs text-[#A1A1AA] leading-normal">
+                        <strong className="text-white">Zero Minors Declaration (Child Safety): </strong>
+                        I certify under penalty of perjury and account suspension that NO minor (under 18) appears in this footage.
+                      </div>
+                    </label>
+                    {errors.confirmedNoMinors && (
+                      <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedNoMinors}
+                      </p>
+                    )}
+
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={confirmedNoExplicitPorn}
+                        onChange={(e) => {
+                          setConfirmedNoExplicitPorn(e.target.checked);
+                          if (errors.confirmedNoExplicitPorn) setErrors({ ...errors, confirmedNoExplicitPorn: '' });
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
+                      />
+                      <div className="text-xs text-[#A1A1AA] leading-normal">
+                        <strong className="text-white">Mainstream Entertainment Standard: </strong>
+                        I certify this video contains NO explicit sexual pornography, escort solicitations, or non-consensual imagery.
+                      </div>
+                    </label>
+                    {errors.confirmedNoExplicitPorn && (
+                      <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.confirmedNoExplicitPorn}
+                      </p>
+                    )}
+
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-[#181822]/80 border border-white/5 hover:border-white/10 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms && acceptedPrivacy}
+                        onChange={(e) => {
+                          setAcceptedTerms(e.target.checked);
+                          setAcceptedPrivacy(e.target.checked);
+                          if (errors.terms) setErrors({ ...errors, terms: '' });
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-[#FF2A85] accent-[#FF2A85] focus:ring-0 focus:ring-offset-0 bg-[#09090C]"
+                      />
+                      <div className="text-xs text-[#A1A1AA] leading-normal">
+                        <strong className="text-white">Publication Consent & Legal Terms: </strong>
+                        I grant ONLYTOK permission for specified promotional syndication on @onlytokgirls with full attribution and accept the Terms & Privacy Notice.
+                      </div>
+                    </label>
+                    {errors.terms && (
+                      <p className="text-xs text-rose-400 pl-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.terms}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Tier 3: Digital Signature */}
+                  <div className="p-3.5 rounded-2xl bg-[#181822] border border-white/10">
+                    <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
+                      Legal Full Name (Digital Signature) <span className="text-[#FF2A85]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={digitalSignature}
+                      onChange={(e) => {
+                        setDigitalSignature(e.target.value);
+                        if (errors.digitalSignature) setErrors({ ...errors, digitalSignature: '' });
+                      }}
+                      placeholder="e.g. Maya Elizabeth Lin"
+                      className="w-full px-3 py-2 rounded-xl bg-[#121217] border border-white/10 text-white placeholder-[#8E8EA0] text-xs focus:outline-none focus:border-[#FF2A85] transition-colors"
+                    />
+                    <p className="text-[10px] text-[#8E8EA0] mt-1">
+                      Acts as your binding electronic signature under the UK Electronic Communications Act 2000.
                     </p>
-                  )}
+                    {errors.digitalSignature && (
+                      <p className="text-xs text-rose-400 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> {errors.digitalSignature}
+                      </p>
+                    )}
+                  </div>
+
                 </div>
 
                 <button

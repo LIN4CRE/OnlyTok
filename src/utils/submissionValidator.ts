@@ -119,10 +119,90 @@ export function validateBrandInquiry(input: BrandInquiryInput): ValidationResult
 /**
  * Generates an auditable tracking reference code.
  */
-export function generateReferenceCode(prefix: 'OT-CR' | 'OT-BP'): string {
+export function generateReferenceCode(prefix: 'OT-CR' | 'OT-BP' | 'REP' | 'GDPR' | 'INQ'): string {
   const randomSegment = Math.floor(1000 + Math.random() * 9000);
   const year = new Date().getFullYear();
   return `${prefix}-${year}-${randomSegment}`;
+}
+
+/**
+ * Calculates current age from ISO birth date string.
+ */
+export function calculateAge(dobString: string, referenceDate: Date = new Date()): number {
+  if (!dobString) return 0;
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return 0;
+  const ageDiffMs = referenceDate.getTime() - dob.getTime();
+  const ageDate = new Date(ageDiffMs);
+  return Math.abs(ageDate.getUTCFullYear() - 1970);
+}
+
+/**
+ * Validates Two-Tier 18+ Statutory Verification Model.
+ */
+export function validateTwoTierAgeVerification(
+  dobString: string,
+  idDocumentType: string,
+  digitalSignature: string,
+  confirmedNoMinors: boolean,
+  confirmedNoExplicitPorn: boolean
+): ValidationResult {
+  const errors: Record<string, string> = {};
+
+  if (!dobString) {
+    errors.birthDate = 'Date of birth is required for 18+ age verification.';
+  } else {
+    const age = calculateAge(dobString);
+    if (age < 18) {
+      errors.birthDate = `Strict 18+ Policy: Applicant age (${age}) is below legal threshold.`;
+    }
+  }
+
+  const validIdTypes = [
+    'UK Driving Licence',
+    'Passport (UK or International)',
+    'National Identity Card',
+    'Verified TikTok Creator Portal Account',
+  ];
+  if (!idDocumentType || !validIdTypes.includes(idDocumentType)) {
+    errors.idDocumentType = 'Valid government or creator portal credential type is required.';
+  }
+
+  if (!digitalSignature || digitalSignature.trim().length < 3) {
+    errors.digitalSignature = 'Typed legal full name is required as a legally binding digital signature.';
+  }
+
+  if (!confirmedNoMinors) {
+    errors.confirmedNoMinors = 'Mandatory Child Safety Declaration: You must certify zero minors appear.';
+  }
+
+  if (!confirmedNoExplicitPorn) {
+    errors.confirmedNoExplicitPorn = 'Mainstream Standard: You must certify zero explicit pornography or NCII appears.';
+  }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+  };
+}
+
+/**
+ * Classifies content report urgency into SLA tiers under UK safety guidelines.
+ */
+export function classifyReportPriority(reportType: string): {
+  urgency: 'CRITICAL_SAFETY' | 'PRIORITY_LEGAL' | 'STANDARD_MODERATION';
+  slaHours: number;
+} {
+  switch (reportType) {
+    case 'ncii_report':
+    case 'age_verification':
+      return { urgency: 'CRITICAL_SAFETY', slaHours: 6 };
+    case 'copyright_dmca':
+    case 'rights_dispute':
+      return { urgency: 'PRIORITY_LEGAL', slaHours: 24 };
+    default:
+      return { urgency: 'STANDARD_MODERATION', slaHours: 48 };
+  }
 }
 
 /**

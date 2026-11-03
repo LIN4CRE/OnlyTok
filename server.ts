@@ -42,6 +42,8 @@ const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const ADMIN_USERS_FILE = path.join(DATA_DIR, 'admin_users.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const GDPR_REQUESTS_FILE = path.join(DATA_DIR, 'gdpr_requests.json');
+const CONTACT_INQUIRIES_FILE = path.join(DATA_DIR, 'contact_inquiries.json');
 
 // Helper to safely read/write persistent JSON stores
 function readStore<T>(filePath: string, defaultVal: T): T {
@@ -335,6 +337,11 @@ app.post(
         category,
         confirmedOwnership,
         confirmedAdult18,
+        birthDate,
+        idDocumentType = 'Passport / Driving Licence',
+        confirmedNoMinors,
+        confirmedNoExplicitPorn,
+        digitalSignature,
         acceptedTerms,
         acceptedPrivacy,
         originalFileName,
@@ -378,6 +385,31 @@ app.post(
         return res.status(400).json({ error: 'Strict 18+ verification is mandatory. The individual featured must be 18 or older.' });
       }
 
+      // Age calculation verification
+      if (birthDate) {
+        const dob = new Date(birthDate);
+        if (!isNaN(dob.getTime())) {
+          const ageDiffMs = Date.now() - dob.getTime();
+          const ageDate = new Date(ageDiffMs);
+          const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
+          if (calculatedAge < 18) {
+            return res.status(400).json({ error: 'Strict Age Restriction: Creator must be at least 18 years of age.' });
+          }
+        }
+      }
+
+      if (confirmedNoMinors !== true) {
+        return res.status(400).json({ error: 'Mandatory Child Safety Declaration: You must certify zero individuals under 18 appear in this video.' });
+      }
+
+      if (confirmedNoExplicitPorn !== true) {
+        return res.status(400).json({ error: 'Mainstream Standard: You must certify this content contains no explicit sexual content or non-consensual material.' });
+      }
+
+      if (!digitalSignature || typeof digitalSignature !== 'string' || digitalSignature.trim().length < 3) {
+        return res.status(400).json({ error: 'A valid typed digital signature (legal full name) is required to execute this agreement.' });
+      }
+
       if (acceptedTerms !== true || acceptedPrivacy !== true) {
         return res.status(400).json({ error: 'You must accept the terms of syndication and privacy notice.' });
       }
@@ -402,6 +434,14 @@ app.post(
         category: category || 'Dance & Choreography',
         confirmedOwnership: true,
         confirmedAdult18: true,
+        verificationRecord: {
+          birthDate: birthDate || null,
+          idDocumentType: String(idDocumentType).slice(0, 100),
+          confirmedNoMinors: true,
+          confirmedNoExplicitPorn: true,
+          digitalSignature: digitalSignature.trim(),
+          verifiedAt: new Date().toISOString(),
+        },
         acceptedTerms: true,
         acceptedPrivacy: true,
         status: 'pending', // NEVER automatically published
@@ -528,7 +568,18 @@ app.post(
         evidenceUrl = '',
       } = req.body;
 
-      if (!reportType || !['copyright_dmca', 'inappropriate_content', 'age_verification', 'rights_dispute', 'other'].includes(reportType)) {
+      const validReportTypes = [
+        'copyright_dmca',
+        'inappropriate_content',
+        'age_verification',
+        'rights_dispute',
+        'ncii_report',
+        'unauthorized_repost',
+        'defamation',
+        'other',
+      ];
+
+      if (!reportType || !validReportTypes.includes(reportType)) {
         return res.status(400).json({ error: 'A valid report reason / infringement category is required.' });
       }
 
@@ -547,10 +598,13 @@ app.post(
 
       const year = new Date().getFullYear();
       const code = `DMCA-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const isCritical = ['ncii_report', 'age_verification'].includes(reportType);
+
       const newReport = {
         id: `rep_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         referenceCode: code,
         reportType,
+        urgency: isCritical ? 'CRITICAL_SAFETY' : 'STANDARD',
         targetType,
         targetId: targetId || 'unspecified',
         targetTitle: targetTitle || 'General Removal Request',
@@ -571,14 +625,143 @@ app.post(
       reports.unshift(newReport);
       writeStore(REPORTS_FILE, reports);
 
+      logAuditAction(
+        'submit_report',
+        newReport.id,
+        `New removal notice filed: ${code} [${reportType.toUpperCase()}] - Urgency: ${newReport.urgency}`,
+        reporterEmail.trim().toLowerCase()
+      );
+
       return res.status(201).json({
         success: true,
         referenceCode: code,
-        message: 'Your removal request / copyright notice has been officially recorded and queued for immediate legal review.',
+        urgency: newReport.urgency,
+        message: isCritical
+          ? 'CRITICAL NOTICE: Your safety report has been prioritized for expedited emergency review within 6 hours.'
+          : 'Your removal request / copyright notice has been officially recorded and queued for immediate legal review.',
       });
     } catch (err) {
       console.error('Error submitting report:', err);
       return res.status(500).json({ error: 'Failed to record removal request.' });
+    }
+  }
+);
+
+// 10. UK GDPR Data Subject Rights (Erasure, Access, Rectification)
+app.post(
+  '/api/privacy/gdpr-request',
+  rateLimiter(10, 15 * 60 * 1000),
+  (req: Request, res: Response) => {
+    try {
+      const { fullName, email, requestType, details } = req.body;
+
+      const validTypes = ['erasure_deletion', 'subject_access_request', 'rectification', 'withdraw_consent'];
+      if (!requestType || !validTypes.includes(requestType)) {
+        return res.status(400).json({ error: 'A valid UK GDPR request type is required.' });
+      }
+
+      if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
+        return res.status(400).json({ error: 'Your full legal name is required.' });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+        return res.status(400).json({ error: 'A valid email address is required.' });
+      }
+
+      if (!details || typeof details !== 'string' || details.trim().length < 5) {
+        return res.status(400).json({ error: 'Please provide brief details of your request.' });
+      }
+
+      const year = new Date().getFullYear();
+      const code = `GDPR-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const newRequest = {
+        id: `gdpr_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        referenceCode: code,
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        requestType,
+        details: details.trim(),
+        status: 'pending',
+        resolutionNotes: null,
+        processedBy: null,
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+      };
+
+      const requests = readStore<any[]>(GDPR_REQUESTS_FILE, []);
+      requests.unshift(newRequest);
+      writeStore(GDPR_REQUESTS_FILE, requests);
+
+      logAuditAction(
+        'gdpr_request_submitted',
+        newRequest.id,
+        `New UK GDPR ${requestType} request filed: ${code}`,
+        email.trim().toLowerCase()
+      );
+
+      return res.status(201).json({
+        success: true,
+        referenceCode: code,
+        message: 'Your UK GDPR rights request has been logged. Under UK statutory law, we will respond within one calendar month.',
+      });
+    } catch (err) {
+      console.error('Error recording GDPR request:', err);
+      return res.status(500).json({ error: 'Failed to record privacy request.' });
+    }
+  }
+);
+
+// 11. Public Contact & Inquiry Submission
+app.post(
+  '/api/contact',
+  rateLimiter(15, 15 * 60 * 1000),
+  (req: Request, res: Response) => {
+    try {
+      const { name, email, department = 'general', subject, message } = req.body;
+
+      if (!name || typeof name !== 'string' || name.trim().length < 2) {
+        return res.status(400).json({ error: 'Your name is required.' });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+        return res.status(400).json({ error: 'A valid email address is required.' });
+      }
+
+      if (!message || typeof message !== 'string' || message.trim().length < 10) {
+        return res.status(400).json({ error: 'Message must be at least 10 characters.' });
+      }
+
+      const year = new Date().getFullYear();
+      const code = `INQ-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const newInquiry = {
+        id: `inq_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        referenceCode: code,
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        department: ['general', 'creators', 'partnerships', 'legal', 'privacy', 'press'].includes(department)
+          ? department
+          : 'general',
+        subject: (subject || 'General Inquiry').trim().slice(0, 150),
+        message: message.trim(),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        respondedAt: null,
+      };
+
+      const inquiries = readStore<any[]>(CONTACT_INQUIRIES_FILE, []);
+      inquiries.unshift(newInquiry);
+      writeStore(CONTACT_INQUIRIES_FILE, inquiries);
+
+      return res.status(201).json({
+        success: true,
+        referenceCode: code,
+        message: 'Thank you for contacting ONLYTOK. Your message has been routed to the relevant team.',
+      });
+    } catch (err) {
+      console.error('Error submitting contact form:', err);
+      return res.status(500).json({ error: 'Failed to process inquiry.' });
     }
   }
 );
@@ -1370,6 +1553,65 @@ app.patch('/api/settings', requireAdminAuth, (req: Request, res: Response) => {
 app.get('/api/moderation-logs', requireAdminAuth, (_req: Request, res: Response) => {
   const logs = readStore<any[]>(LOGS_FILE, []);
   return res.status(200).json({ logs });
+});
+
+// 10. UK GDPR Requests (Admin Management)
+app.get('/api/privacy/gdpr-requests', requireAdminAuth, (_req: Request, res: Response) => {
+  const requests = readStore<any[]>(GDPR_REQUESTS_FILE, []);
+  return res.status(200).json({ requests });
+});
+
+app.post('/api/privacy/gdpr-requests/:id/action', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action, resolutionNotes } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    const requests = readStore<any[]>(GDPR_REQUESTS_FILE, []);
+    const index = requests.findIndex((r) => r.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'GDPR request not found.' });
+    }
+
+    const item = requests[index];
+    item.status = action || 'completed';
+    item.resolutionNotes = resolutionNotes ? String(resolutionNotes).trim() : null;
+    item.processedBy = adminUser.email;
+    item.completedAt = new Date().toISOString();
+
+    // If erasure requested, purge any matching submissions
+    if (item.requestType === 'erasure_deletion' && action === 'completed') {
+      let subs = readStore<any[]>(SUBMISSIONS_FILE, []);
+      subs = subs.filter((s) => s.email.toLowerCase() !== item.email.toLowerCase());
+      writeStore(SUBMISSIONS_FILE, subs);
+    }
+
+    requests[index] = item;
+    writeStore(GDPR_REQUESTS_FILE, requests);
+
+    logAuditAction(
+      'gdpr_resolution',
+      item.id,
+      `Resolved UK GDPR request ${item.referenceCode} (${item.requestType}) - Status: ${item.status}`,
+      adminUser.email
+    );
+
+    return res.status(200).json({
+      success: true,
+      request: item,
+      message: `GDPR request status updated to ${item.status}.`,
+    });
+  } catch (err) {
+    console.error('Error processing GDPR action:', err);
+    return res.status(500).json({ error: 'Failed to process GDPR request.' });
+  }
+});
+
+// 11. Contact Inquiries (Admin Management)
+app.get('/api/admin/contact-inquiries', requireAdminAuth, (_req: Request, res: Response) => {
+  const inquiries = readStore<any[]>(CONTACT_INQUIRIES_FILE, []);
+  return res.status(200).json({ inquiries });
 });
 
 // ==========================================

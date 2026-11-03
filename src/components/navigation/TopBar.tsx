@@ -7,7 +7,16 @@ import React from 'react';
 import { OnlyTokLogo } from '../brand/OnlyTokLogo';
 import { ExternalLink, Sparkles, Menu, ShieldCheck } from 'lucide-react';
 
-export type NavTab = 'home' | 'discover' | 'creators' | 'submit' | 'about' | 'admin';
+export type NavTab =
+  | 'home'
+  | 'discover'
+  | 'creators'
+  | 'submit'
+  | 'about'
+  | 'admin'
+  | 'legal'
+  | 'removal'
+  | 'contact';
 
 interface TopBarProps {
   activeTab: NavTab;
@@ -63,6 +72,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Zone 3: Actions & Mobile Hamburger */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Legal & Safety Button */}
+          <button
+            onClick={() => onNavigate('legal')}
+            className={`hidden xl:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+              activeTab === 'legal' || activeTab === 'removal'
+                ? 'bg-[#FF2A85]/20 text-[#FF2A85] border-[#FF2A85]/40'
+                : 'bg-[#181822] text-[#A1A1AA] hover:text-white border-white/10'
+            }`}
+            title="Legal, Privacy, Content Safety & UK Compliance"
+          >
+            <span>Legal & Safety</span>
+          </button>
+
           {/* Admin Moderation Button */}
           <button
             onClick={() => onNavigate('admin')}

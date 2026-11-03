@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Flag,
 } from 'lucide-react';
 import { VideoItem, getRelatedVideos } from '../../data/contentRegistry';
 
@@ -23,6 +24,7 @@ interface VideoPlayerModalProps {
   onClose: () => void;
   onSelectVideo: (video: VideoItem) => void;
   onOpenCreator: (creatorId: string) => void;
+  onReportVideo?: (video: VideoItem) => void;
 }
 
 export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
@@ -30,6 +32,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   onClose,
   onSelectVideo,
   onOpenCreator,
+  onReportVideo,
 }) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -326,6 +329,17 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                 >
                   WhatsApp
                 </button>
+
+                {onReportVideo && (
+                  <button
+                    onClick={() => onReportVideo(video)}
+                    className="px-3 py-2 rounded-xl text-xs font-medium text-[#8E8EA0] hover:text-rose-400 bg-[#181822] hover:bg-rose-500/10 border border-white/10 hover:border-rose-500/30 transition-all flex items-center gap-1.5"
+                    title="Report content, copyright violation, minor concerns, or inappropriate footage"
+                  >
+                    <Flag className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Report Video</span>
+                  </button>
+                )}
 
                 <a
                   href={video.directTikTokUrl}
