@@ -1,0 +1,21 @@
+[
+  {
+    "id": "rep_1793725000001_8a12bc",
+    "referenceCode": "DMCA-2026-001",
+    "reportType": "rights_dispute",
+    "targetType": "published_video",
+    "targetId": "rel_sub_1793724813726_68b231cf",
+    "targetTitle": "Utilitarian Noir Trench Showcase",
+    "reporterName": "Studio Wardrobe Rights LLC",
+    "reporterEmail": "rights@studiowardrobe.com",
+    "reporterAffiliation": "Intellectual Property Representative",
+    "details": "Routine trademark licensing query regarding background apparel badge design.",
+    "evidenceUrl": "https://studiowardrobe.com/ip-notice",
+    "status": "resolved",
+    "takedownExecuted": false,
+    "resolutionNotes": "Verified original design exemption. Creator provided signed apparel release. Clearance documented in creator file.",
+    "resolvedBy": "dlinacre16@gmail.com",
+    "createdAt": "2026-11-03T16:00:00.000Z",
+    "resolvedAt": "2026-11-03T16:25:00.000Z"
+  }
+]

@@ -1,5 +1,13 @@
 [
   {
+    "id": "log_1793726920249_0f1953",
+    "action": "update_published",
+    "targetId": "rel_sub_1793724813726_68b231cf",
+    "details": "Updated published video metadata / feature status (Featured)",
+    "moderatorEmail": "dlinacre16@gmail.com",
+    "timestamp": "2026-11-03T17:28:40.249Z"
+  },
+  {
     "id": "log_1793725036201_20d5f0",
     "submissionId": "sub_1793724813726_68b231cf",
     "videoTitle": "Utilitarian Noir Trench Showcase",

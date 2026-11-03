@@ -1,0 +1,22 @@
+{
+  "brandName": "ONLYTOK",
+  "brandTagline": "Discover Your Next Favourite Creator",
+  "tiktokHandle": "@onlytokgirls",
+  "tiktokUrl": "https://www.tiktok.com/@onlytokgirls",
+  "contactEmail": "contact@onlytok.com",
+  "dmcaEmail": "legal@onlytok.com",
+  "submissionStatus": "open",
+  "submissionNotice": "Open for verified 18+ creators across dance, fashion, music, and vertical entertainment.",
+  "maxUploadSizeMb": 50,
+  "allowedVideoFormats": ["mp4", "webm", "mov"],
+  "requireDual18Check": true,
+  "autoFeatureThreshold": false,
+  "announcementBanner": {
+    "active": true,
+    "text": "Official @onlytokgirls Syndication Queue is active. Review turn-around: within 24 hours.",
+    "link": "/?tab=submit"
+  },
+  "watermarkBranding": true,
+  "updatedAt": "2026-11-03T16:50:00.000Z",
+  "updatedBy": "dlinacre16@gmail.com"
+}

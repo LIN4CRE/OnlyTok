@@ -33,9 +33,15 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Data Store File Paths
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
 const PUBLISHED_FILE = path.join(DATA_DIR, 'published_releases.json');
 const LOGS_FILE = path.join(DATA_DIR, 'moderation_logs.json');
+const CREATORS_FILE = path.join(DATA_DIR, 'creators.json');
+const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
+const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
+const ADMIN_USERS_FILE = path.join(DATA_DIR, 'admin_users.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 // Helper to safely read/write persistent JSON stores
 function readStore<T>(filePath: string, defaultVal: T): T {
@@ -120,34 +126,121 @@ const upload = multer({
   },
 });
 
-// Admin validation helper
-const ADMIN_EMAILS = [
-  'dlinacre16@gmail.com',
-  'admin@onlytok.com',
-];
+// Admin Authentication & Permission System
+const SUPER_ADMIN_EMAIL = 'dlinacre16@gmail.com';
 
-function checkIsAdmin(req: Request): boolean {
-  const authHeader = req.headers.authorization;
+interface AdminUserRecord {
+  id: string;
+  email: string;
+  displayName: string;
+  role: 'super_admin' | 'moderator' | 'editor';
+  status: 'active' | 'revoked';
+  notes?: string;
+  addedAt: string;
+  lastActiveAt?: string;
+}
+
+function getActiveAdminUsers(): AdminUserRecord[] {
+  const users = readStore<AdminUserRecord[]>(ADMIN_USERS_FILE, []);
+  // Ensure primary super_admin is always authorized
+  if (!users.some((u) => u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
+    users.unshift({
+      id: 'adm_super_01',
+      email: SUPER_ADMIN_EMAIL,
+      displayName: 'Dominic Linacre',
+      role: 'super_admin',
+      status: 'active',
+      notes: 'Primary Founder & Master Administrator',
+      addedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    });
+    writeStore(ADMIN_USERS_FILE, users);
+  }
+  return users;
+}
+
+function resolveAdmin(req: Request): AdminUserRecord | null {
   const adminEmailHeader = req.headers['x-admin-email'] as string | undefined;
+  const authHeader = req.headers.authorization;
 
-  if (adminEmailHeader && ADMIN_EMAILS.includes(adminEmailHeader.toLowerCase().trim())) {
-    return true;
+  let candidateEmail = '';
+  if (adminEmailHeader) {
+    candidateEmail = adminEmailHeader.toLowerCase().trim();
+  } else if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (token.includes('@')) {
+      candidateEmail = token.toLowerCase().trim();
+    } else if (token === 'admin-authenticated-token' || token === 'dev-admin-session') {
+      candidateEmail = SUPER_ADMIN_EMAIL;
+    }
   }
-  // In development/test mode, check for admin token
-  if (authHeader && authHeader.includes('Bearer admin-authenticated-token')) {
-    return true;
+
+  if (!candidateEmail) {
+    return null;
   }
-  return false;
+
+  const admins = getActiveAdminUsers();
+  const match = admins.find(
+    (u) => u.email.toLowerCase() === candidateEmail && u.status === 'active'
+  );
+
+  return match || null;
+}
+
+function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+  const admin = resolveAdmin(req);
+  if (!admin) {
+    return res.status(401).json({
+      error: 'Unauthorized: Valid administrator credentials required to access this resource.',
+      loginRequired: true,
+    });
+  }
+  (req as any).adminUser = admin;
+  next();
+}
+
+function logAuditAction(
+  action: string,
+  targetId: string,
+  details: string,
+  moderatorEmail: string,
+  extra: Record<string, any> = {}
+) {
+  try {
+    const logs = readStore<any[]>(LOGS_FILE, []);
+    logs.unshift({
+      id: `log_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      action,
+      targetId,
+      details,
+      moderatorEmail,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    });
+    writeStore(LOGS_FILE, logs);
+  } catch (err) {
+    console.error('Failed to log audit action:', err);
+  }
 }
 
 // ==========================================
-// API Endpoints
+// Public Endpoints
 // ==========================================
 
-// 1. Upload Video
+// 1. Health check
+app.get('/api/health', (_req: Request, res: Response) => {
+  return res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uploadsReady: fs.existsSync(UPLOADS_DIR),
+    dataReady: fs.existsSync(DATA_DIR),
+  });
+});
+
+// 2. Upload Video (Rate-Limited, 50MB Limit)
 app.post(
   '/api/upload',
-  rateLimiter(15, 15 * 60 * 1000), // Max 15 uploads per 15 min per IP
+  rateLimiter(15, 15 * 60 * 1000),
   (req: Request, res: Response) => {
     upload.single('video')(req, res, (err) => {
       if (err instanceof multer.MulterError) {
@@ -176,7 +269,7 @@ app.post(
   }
 );
 
-// 2. Stream/Serve Uploaded Video with Range Requests
+// 3. Stream Uploaded Video with Range Requests
 app.get('/api/media/:filename', (req: Request, res: Response) => {
   const safeFilename = path.basename(req.params.filename);
   const filePath = path.join(UPLOADS_DIR, safeFilename);
@@ -225,10 +318,10 @@ app.get('/api/media/:filename', (req: Request, res: Response) => {
   }
 });
 
-// 3. Submit Creator Content
+// 4. Submit Creator Content
 app.post(
   '/api/submissions',
-  rateLimiter(30, 15 * 60 * 1000), // Max 30 submissions per 15 min per IP
+  rateLimiter(30, 15 * 60 * 1000),
   (req: Request, res: Response) => {
     try {
       const {
@@ -248,7 +341,6 @@ app.post(
         fileSizeBytes,
       } = req.body;
 
-      // Validation
       if (!creatorName || typeof creatorName !== 'string' || creatorName.trim().length < 2 || creatorName.length > 100) {
         return res.status(400).json({ error: 'Creator display name must be between 2 and 100 characters.' });
       }
@@ -268,18 +360,6 @@ app.post(
 
       if (!videoTitle || typeof videoTitle !== 'string' || videoTitle.trim().length < 3 || videoTitle.length > 150) {
         return res.status(400).json({ error: 'Video title must be between 3 and 150 characters.' });
-      }
-
-      const validCategories = [
-        'Dance & Choreography',
-        'Fashion & Style',
-        'Music & Sounds',
-        'Comedy & POV',
-        'Fitness & Active',
-        'Creative Arts & FX',
-      ];
-      if (!category || !validCategories.includes(category)) {
-        return res.status(400).json({ error: 'Please select a valid entertainment category.' });
       }
 
       if (!['upload', 'url'].includes(mediaType)) {
@@ -302,7 +382,6 @@ app.post(
         return res.status(400).json({ error: 'You must accept the terms of syndication and privacy notice.' });
       }
 
-      // Generate Reference Code & Submission ID
       const year = new Date().getFullYear();
       const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
       const referenceCode = `OT-CR-${year}-${randomSuffix}`;
@@ -320,7 +399,7 @@ app.post(
         mediaUrl: mediaUrl.trim(),
         originalFileName: originalFileName || null,
         fileSizeBytes: fileSizeBytes || null,
-        category,
+        category: category || 'Dance & Choreography',
         confirmedOwnership: true,
         confirmedAdult18: true,
         acceptedTerms: true,
@@ -350,18 +429,229 @@ app.post(
   }
 );
 
-// 4. Get Submissions (Protected Admin Queue)
+// 5. Get Published Releases (Public Feed)
+app.get('/api/published-releases', (req: Request, res: Response) => {
+  const published = readStore<any[]>(PUBLISHED_FILE, []);
+  const { category, search, featured } = req.query;
+
+  let result = [...published];
+
+  if (category && typeof category === 'string' && category !== 'All Categories' && category !== 'all') {
+    result = result.filter((p) => p.category.toLowerCase() === category.toLowerCase());
+  }
+
+  if (featured === 'true') {
+    result = result.filter((p) => p.isFeatured === true);
+  }
+
+  if (search && typeof search === 'string' && search.trim().length > 0) {
+    const q = search.trim().toLowerCase();
+    result = result.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.creatorName.toLowerCase().includes(q) ||
+        p.tiktokHandle.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q))
+    );
+  }
+
+  return res.status(200).json({
+    releases: result,
+    total: result.length,
+  });
+});
+
+// 6. Public Categories List
+app.get('/api/categories', (_req: Request, res: Response) => {
+  const categories = readStore<any[]>(CATEGORIES_FILE, []);
+  return res.status(200).json({ categories });
+});
+
+// 7. Public Creators List
+app.get('/api/creators', (req: Request, res: Response) => {
+  const creators = readStore<any[]>(CREATORS_FILE, []);
+  const { search, category } = req.query;
+
+  let result = creators.filter((c) => c.status !== 'suspended');
+
+  if (category && typeof category === 'string' && category !== 'all') {
+    result = result.filter((c) =>
+      c.categories?.some((cat: string) => cat.toLowerCase().includes(category.toLowerCase()))
+    );
+  }
+
+  if (search && typeof search === 'string' && search.trim().length > 0) {
+    const q = search.trim().toLowerCase();
+    result = result.filter(
+      (c) =>
+        c.displayName.toLowerCase().includes(q) ||
+        c.username.toLowerCase().includes(q) ||
+        (c.bio && c.bio.toLowerCase().includes(q))
+    );
+  }
+
+  return res.status(200).json({ creators: result, total: result.length });
+});
+
+// 8. Public Website Settings
+app.get('/api/settings/public', (_req: Request, res: Response) => {
+  const settings = readStore<any>(SETTINGS_FILE, {});
+  return res.status(200).json({
+    brandName: settings.brandName || 'ONLYTOK',
+    brandTagline: settings.brandTagline || 'Discover Your Next Favourite Creator',
+    tiktokHandle: settings.tiktokHandle || '@onlytokgirls',
+    tiktokUrl: settings.tiktokUrl || 'https://www.tiktok.com/@onlytokgirls',
+    contactEmail: settings.contactEmail || 'contact@onlytok.com',
+    dmcaEmail: settings.dmcaEmail || 'legal@onlytok.com',
+    submissionStatus: settings.submissionStatus || 'open',
+    submissionNotice: settings.submissionNotice || '',
+    maxUploadSizeMb: settings.maxUploadSizeMb || 50,
+    announcementBanner: settings.announcementBanner || { active: false, text: '', link: '' },
+  });
+});
+
+// 9. Public Report / DMCA / Removal Request Submission
+app.post(
+  '/api/reports',
+  rateLimiter(10, 15 * 60 * 1000),
+  (req: Request, res: Response) => {
+    try {
+      const {
+        reportType,
+        targetType = 'published_video',
+        targetId,
+        targetTitle,
+        reporterName,
+        reporterEmail,
+        reporterAffiliation = '',
+        details,
+        evidenceUrl = '',
+      } = req.body;
+
+      if (!reportType || !['copyright_dmca', 'inappropriate_content', 'age_verification', 'rights_dispute', 'other'].includes(reportType)) {
+        return res.status(400).json({ error: 'A valid report reason / infringement category is required.' });
+      }
+
+      if (!reporterName || typeof reporterName !== 'string' || reporterName.trim().length < 2) {
+        return res.status(400).json({ error: 'Your full name or legal representative name is required.' });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!reporterEmail || typeof reporterEmail !== 'string' || !emailRegex.test(reporterEmail.trim())) {
+        return res.status(400).json({ error: 'A valid contact email address is required.' });
+      }
+
+      if (!details || typeof details !== 'string' || details.trim().length < 10) {
+        return res.status(400).json({ error: 'Please provide full details of your request or infringement claim (min 10 chars).' });
+      }
+
+      const year = new Date().getFullYear();
+      const code = `DMCA-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const newReport = {
+        id: `rep_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        referenceCode: code,
+        reportType,
+        targetType,
+        targetId: targetId || 'unspecified',
+        targetTitle: targetTitle || 'General Removal Request',
+        reporterName: reporterName.trim(),
+        reporterEmail: reporterEmail.trim().toLowerCase(),
+        reporterAffiliation: reporterAffiliation.trim(),
+        details: details.trim(),
+        evidenceUrl: evidenceUrl.trim(),
+        status: 'pending',
+        takedownExecuted: false,
+        resolutionNotes: null,
+        resolvedBy: null,
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+      };
+
+      const reports = readStore<any[]>(REPORTS_FILE, []);
+      reports.unshift(newReport);
+      writeStore(REPORTS_FILE, reports);
+
+      return res.status(201).json({
+        success: true,
+        referenceCode: code,
+        message: 'Your removal request / copyright notice has been officially recorded and queued for immediate legal review.',
+      });
+    } catch (err) {
+      console.error('Error submitting report:', err);
+      return res.status(500).json({ error: 'Failed to record removal request.' });
+    }
+  }
+);
+
+// ==========================================
+// Protected Administrator Endpoints
+// ==========================================
+
+// Verify Admin Session / Token
+app.post('/api/admin/verify', (req: Request, res: Response) => {
+  const admin = resolveAdmin(req);
+  if (!admin) {
+    return res.status(401).json({
+      authenticated: false,
+      error: 'Not authorized. Administrator account required.',
+    });
+  }
+
+  return res.status(200).json({
+    authenticated: true,
+    user: admin,
+  });
+});
+
+// 1. Overview Statistics: Genuine Database Counts Only
+app.get('/api/admin/statistics', requireAdminAuth, (_req: Request, res: Response) => {
+  try {
+    const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
+    const published = readStore<any[]>(PUBLISHED_FILE, []);
+    const creators = readStore<any[]>(CREATORS_FILE, []);
+    const reports = readStore<any[]>(REPORTS_FILE, []);
+    const categories = readStore<any[]>(CATEGORIES_FILE, []);
+
+    // Unique published creators
+    const publishedCreatorHandles = new Set(published.map((p) => p.tiktokHandle?.toLowerCase()).filter(Boolean));
+    const publishedCreatorsCount = publishedCreatorHandles.size;
+
+    const stats = {
+      hasData: true,
+      totalApprovedVideos: published.length,
+      pendingSubmissions: submissions.filter((s) => s.status === 'pending').length,
+      registeredCreators: creators.length,
+      publishedCreators: publishedCreatorsCount,
+      contentRemovalRequests: reports.length,
+      pendingRemovalRequests: reports.filter((r) => r.status === 'pending').length,
+      totalSubmissions: submissions.length,
+      totalCategories: categories.length,
+      submissionStatusBreakdown: {
+        pending: submissions.filter((s) => s.status === 'pending').length,
+        approved: submissions.filter((s) => s.status === 'approved').length,
+        rejected: submissions.filter((s) => s.status === 'rejected').length,
+        correction_requested: submissions.filter((s) => s.status === 'correction_requested').length,
+      },
+    };
+
+    return res.status(200).json(stats);
+  } catch (err) {
+    console.error('Failed to compute statistics:', err);
+    return res.status(500).json({ error: 'Failed to retrieve database statistics.' });
+  }
+});
+
+// 2. Submissions Queue (Admin)
 app.get('/api/submissions', (req: Request, res: Response) => {
   const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
   const { status, referenceCode } = req.query;
 
-  // If public check by referenceCode (for creator tracking their status)
+  // Public reference check
   if (referenceCode && typeof referenceCode === 'string') {
     const match = submissions.find((s) => s.referenceCode === referenceCode.trim().toUpperCase());
     if (!match) {
       return res.status(404).json({ error: 'Submission reference code not found.' });
     }
-    // Return sanitized public tracking info
     return res.status(200).json({
       referenceCode: match.referenceCode,
       creatorName: match.creatorName,
@@ -375,7 +665,12 @@ app.get('/api/submissions', (req: Request, res: Response) => {
     });
   }
 
-  // Admin access check for the full queue
+  // Admin access check for full queue
+  const admin = resolveAdmin(req);
+  if (!admin) {
+    return res.status(401).json({ error: 'Administrator access required.' });
+  }
+
   let filtered = submissions;
   if (status && typeof status === 'string' && status !== 'all') {
     filtered = filtered.filter((s) => s.status === status);
@@ -393,15 +688,69 @@ app.get('/api/submissions', (req: Request, res: Response) => {
   });
 });
 
-// 5. Moderate Submission (Admin Action: approve, reject, request_correction, remove)
-app.post('/api/submissions/:id/moderate', (req: Request, res: Response) => {
+// Edit Video Submission (title, description, category before or after approval)
+app.patch('/api/submissions/:id', requireAdminAuth, (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { action, notes, moderatorEmail = 'admin@onlytok.com' } = req.body;
+    const { videoTitle, videoDescription, category } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
+    const index = submissions.findIndex((s) => s.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Submission not found.' });
+    }
+
+    const sub = submissions[index];
+    if (videoTitle && typeof videoTitle === 'string' && videoTitle.trim().length >= 3) {
+      sub.videoTitle = videoTitle.trim().slice(0, 150);
+    }
+    if (typeof videoDescription === 'string') {
+      sub.videoDescription = videoDescription.trim().slice(0, 1000);
+    }
+    if (category && typeof category === 'string') {
+      sub.category = category.trim();
+    }
+    sub.updatedAt = new Date().toISOString();
+
+    submissions[index] = sub;
+    writeStore(SUBMISSIONS_FILE, submissions);
+
+    // If already published, sync updates to published_releases.json
+    const published = readStore<any[]>(PUBLISHED_FILE, []);
+    const pubIndex = published.findIndex((p) => p.submissionId === id);
+    if (pubIndex >= 0) {
+      published[pubIndex].title = sub.videoTitle;
+      published[pubIndex].description = sub.videoDescription;
+      published[pubIndex].category = sub.category;
+      writeStore(PUBLISHED_FILE, published);
+    }
+
+    logAuditAction('edit_submission', id, `Updated video title / description for ${sub.referenceCode}`, adminUser.email);
+
+    return res.status(200).json({
+      success: true,
+      submission: sub,
+      message: 'Submission details updated successfully.',
+    });
+  } catch (err) {
+    console.error('Error editing submission:', err);
+    return res.status(500).json({ error: 'Failed to update submission.' });
+  }
+});
+
+// Moderate Submission (approve, reject, request_correction, remove)
+app.post('/api/submissions/:id/moderate', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action, notes } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+    const moderatorEmail = adminUser?.email || SUPER_ADMIN_EMAIL;
 
     const validActions = ['approve', 'reject', 'request_correction', 'remove'];
     if (!action || !validActions.includes(action)) {
-      return res.status(400).json({ error: `Invalid moderation action. Must be one of: ${validActions.join(', ')}` });
+      return res.status(400).json({ error: `Invalid action. Must be one of: ${validActions.join(', ')}` });
     }
 
     const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
@@ -445,12 +794,13 @@ app.post('/api/submissions/:id/moderate', (req: Request, res: Response) => {
         mediaType: sub.mediaType,
         category: sub.category,
         referenceCode: sub.referenceCode,
+        isFeatured: false,
         publishedAt: timestamp,
         publishedBy: moderatorEmail,
       };
 
       if (existingRelIndex >= 0) {
-        published[existingRelIndex] = releaseRecord;
+        published[existingRelIndex] = { ...published[existingRelIndex], ...releaseRecord };
       } else {
         published.unshift(releaseRecord);
       }
@@ -460,19 +810,13 @@ app.post('/api/submissions/:id/moderate', (req: Request, res: Response) => {
       writeStore(PUBLISHED_FILE, published);
     }
 
-    // Record moderation log
-    const logs = readStore<any[]>(LOGS_FILE, []);
-    logs.unshift({
-      id: `log_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-      submissionId: sub.id,
-      videoTitle: sub.videoTitle,
-      creatorName: sub.creatorName,
+    logAuditAction(
       action,
-      notes: notes || '',
+      sub.id,
+      `Moderation action [${action.toUpperCase()}] on submission "${sub.videoTitle}" (${sub.referenceCode})`,
       moderatorEmail,
-      timestamp,
-    });
-    writeStore(LOGS_FILE, logs);
+      { notes: notes || '' }
+    );
 
     return res.status(200).json({
       success: true,
@@ -486,48 +830,546 @@ app.post('/api/submissions/:id/moderate', (req: Request, res: Response) => {
   }
 });
 
-// 6. Get Published Releases (Public Feed)
-app.get('/api/published-releases', (req: Request, res: Response) => {
-  const published = readStore<any[]>(PUBLISHED_FILE, []);
-  const { category, search } = req.query;
+// 3. Published Videos Management
+// Feature / unfeature or edit published release
+app.patch('/api/published-releases/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isFeatured, title, description, category } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
 
-  let result = published;
+    const published = readStore<any[]>(PUBLISHED_FILE, []);
+    const index = published.findIndex((p) => p.id === id || p.submissionId === id);
 
-  if (category && typeof category === 'string' && category !== 'All Categories') {
-    result = result.filter((p) => p.category === category);
-  }
+    if (index === -1) {
+      return res.status(404).json({ error: 'Published video release not found.' });
+    }
 
-  if (search && typeof search === 'string' && search.trim().length > 0) {
-    const q = search.trim().toLowerCase();
-    result = result.filter(
-      (p) =>
-        p.title.toLowerCase().includes(q) ||
-        p.creatorName.toLowerCase().includes(q) ||
-        p.tiktokHandle.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q))
+    const item = published[index];
+    if (typeof isFeatured === 'boolean') {
+      item.isFeatured = isFeatured;
+    }
+    if (title && typeof title === 'string') {
+      item.title = title.trim();
+    }
+    if (typeof description === 'string') {
+      item.description = description.trim();
+    }
+    if (category && typeof category === 'string') {
+      item.category = category.trim();
+    }
+
+    published[index] = item;
+    writeStore(PUBLISHED_FILE, published);
+
+    logAuditAction(
+      'update_published',
+      item.id,
+      `Updated published video metadata / feature status (${item.isFeatured ? 'Featured' : 'Standard'})`,
+      adminUser.email
     );
+
+    return res.status(200).json({
+      success: true,
+      video: item,
+      message: 'Published video updated successfully.',
+    });
+  } catch (err) {
+    console.error('Error updating published release:', err);
+    return res.status(500).json({ error: 'Failed to update published release.' });
+  }
+});
+
+// Remove / Takedown Published Video
+app.delete('/api/published-releases/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason = 'Administrative removal' } = req.body || {};
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    let published = readStore<any[]>(PUBLISHED_FILE, []);
+    const target = published.find((p) => p.id === id || p.submissionId === id);
+
+    if (!target) {
+      return res.status(404).json({ error: 'Published video not found.' });
+    }
+
+    published = published.filter((p) => p.id !== id && p.submissionId !== id);
+    writeStore(PUBLISHED_FILE, published);
+
+    // Sync submission status to 'pending' or 'rejected'
+    const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
+    const subIndex = submissions.findIndex((s) => s.id === target.submissionId);
+    if (subIndex >= 0) {
+      submissions[subIndex].status = 'pending';
+      submissions[subIndex].moderationNotes = `Content taken down: ${reason}`;
+      submissions[subIndex].updatedAt = new Date().toISOString();
+      writeStore(SUBMISSIONS_FILE, submissions);
+    }
+
+    logAuditAction(
+      'takedown_published',
+      target.id,
+      `Takedown executed on "${target.title}" - Reason: ${reason}`,
+      adminUser.email
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Video successfully removed from public syndication.',
+    });
+  } catch (err) {
+    console.error('Error removing published release:', err);
+    return res.status(500).json({ error: 'Failed to remove published release.' });
+  }
+});
+
+// 4. Creator Management Endpoints
+app.post('/api/creators', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const {
+      displayName,
+      username,
+      email,
+      bio,
+      avatarUrl,
+      categories = ['Dance & Choreography'],
+      isVerified18Plus = true,
+      tiktokUrl,
+    } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    if (!displayName || !username) {
+      return res.status(400).json({ error: 'Creator display name and TikTok handle are required.' });
+    }
+
+    const cleanUsername = username.startsWith('@') ? username.trim() : `@${username.trim()}`;
+    const creators = readStore<any[]>(CREATORS_FILE, []);
+
+    if (creators.some((c) => c.username.toLowerCase() === cleanUsername.toLowerCase())) {
+      return res.status(400).json({ error: 'A creator profile with this TikTok handle already exists.' });
+    }
+
+    const newCreator = {
+      id: `creator-${crypto.randomBytes(4).toString('hex')}`,
+      displayName: displayName.trim(),
+      username: cleanUsername,
+      email: email ? email.trim().toLowerCase() : '',
+      bio: (bio || '').trim(),
+      avatarUrl: avatarUrl || '/src/assets/images/onlytok_social_share_card_1793722066290.jpg',
+      categories: Array.isArray(categories) ? categories : [categories],
+      isVerified18Plus: isVerified18Plus === true,
+      status: 'active',
+      socialLinks: {
+        tiktok: tiktokUrl || `https://www.tiktok.com/${cleanUsername}`,
+      },
+      totalSpotlights: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    creators.unshift(newCreator);
+    writeStore(CREATORS_FILE, creators);
+
+    logAuditAction('create_creator', newCreator.id, `Created creator profile for ${cleanUsername}`, adminUser.email);
+
+    return res.status(201).json({
+      success: true,
+      creator: newCreator,
+      message: 'Creator profile added successfully.',
+    });
+  } catch (err) {
+    console.error('Error creating creator:', err);
+    return res.status(500).json({ error: 'Failed to add creator.' });
+  }
+});
+
+app.patch('/api/creators/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+    const creators = readStore<any[]>(CREATORS_FILE, []);
+    const index = creators.findIndex((c) => c.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Creator profile not found.' });
+    }
+
+    const creator = creators[index];
+    const {
+      displayName,
+      username,
+      email,
+      bio,
+      avatarUrl,
+      categories,
+      isVerified18Plus,
+      status,
+      socialLinks,
+    } = req.body;
+
+    if (displayName) creator.displayName = displayName.trim();
+    if (username) {
+      creator.username = username.startsWith('@') ? username.trim() : `@${username.trim()}`;
+    }
+    if (email !== undefined) creator.email = email.trim().toLowerCase();
+    if (bio !== undefined) creator.bio = bio.trim();
+    if (avatarUrl) creator.avatarUrl = avatarUrl;
+    if (Array.isArray(categories)) creator.categories = categories;
+    if (typeof isVerified18Plus === 'boolean') creator.isVerified18Plus = isVerified18Plus;
+    if (['active', 'suspended'].includes(status)) creator.status = status;
+    if (socialLinks) creator.socialLinks = { ...creator.socialLinks, ...socialLinks };
+
+    creator.updatedAt = new Date().toISOString();
+    creators[index] = creator;
+    writeStore(CREATORS_FILE, creators);
+
+    logAuditAction('edit_creator', creator.id, `Updated creator profile for ${creator.username}`, adminUser.email);
+
+    return res.status(200).json({
+      success: true,
+      creator,
+      message: 'Creator profile updated successfully.',
+    });
+  } catch (err) {
+    console.error('Error updating creator:', err);
+    return res.status(500).json({ error: 'Failed to update creator profile.' });
+  }
+});
+
+app.delete('/api/creators/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+    let creators = readStore<any[]>(CREATORS_FILE, []);
+
+    const target = creators.find((c) => c.id === id);
+    if (!target) {
+      return res.status(404).json({ error: 'Creator not found.' });
+    }
+
+    creators = creators.filter((c) => c.id !== id);
+    writeStore(CREATORS_FILE, creators);
+
+    logAuditAction('delete_creator', id, `Removed creator profile ${target.username}`, adminUser.email);
+
+    return res.status(200).json({ success: true, message: 'Creator profile removed.' });
+  } catch (err) {
+    console.error('Error deleting creator:', err);
+    return res.status(500).json({ error: 'Failed to delete creator.' });
+  }
+});
+
+// 5. Category Management Endpoints
+app.post('/api/categories', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { label, description, color, slug } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    if (!label || typeof label !== 'string' || label.trim().length < 2) {
+      return res.status(400).json({ error: 'Valid category label is required.' });
+    }
+
+    const categories = readStore<any[]>(CATEGORIES_FILE, []);
+    const safeSlug = slug || label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    const newCategory = {
+      id: `cat-${crypto.randomBytes(3).toString('hex')}`,
+      label: label.trim(),
+      slug: safeSlug,
+      description: (description || '').trim(),
+      color: color || '#FF2A85',
+      sortOrder: categories.length + 1,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    categories.push(newCategory);
+    writeStore(CATEGORIES_FILE, categories);
+
+    logAuditAction('create_category', newCategory.id, `Created category "${newCategory.label}"`, adminUser.email);
+
+    return res.status(201).json({
+      success: true,
+      category: newCategory,
+      message: 'Category created successfully.',
+    });
+  } catch (err) {
+    console.error('Error creating category:', err);
+    return res.status(500).json({ error: 'Failed to create category.' });
+  }
+});
+
+app.patch('/api/categories/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { label, description, color, sortOrder, isActive } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    const categories = readStore<any[]>(CATEGORIES_FILE, []);
+    const index = categories.findIndex((c) => c.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Category not found.' });
+    }
+
+    const cat = categories[index];
+    if (label) cat.label = label.trim();
+    if (description !== undefined) cat.description = description.trim();
+    if (color) cat.color = color;
+    if (typeof sortOrder === 'number') cat.sortOrder = sortOrder;
+    if (typeof isActive === 'boolean') cat.isActive = isActive;
+
+    categories[index] = cat;
+    writeStore(CATEGORIES_FILE, categories);
+
+    logAuditAction('edit_category', cat.id, `Updated category "${cat.label}"`, adminUser.email);
+
+    return res.status(200).json({
+      success: true,
+      category: cat,
+      message: 'Category updated successfully.',
+    });
+  } catch (err) {
+    console.error('Error updating category:', err);
+    return res.status(500).json({ error: 'Failed to update category.' });
+  }
+});
+
+app.delete('/api/categories/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+    let categories = readStore<any[]>(CATEGORIES_FILE, []);
+
+    const target = categories.find((c) => c.id === id);
+    if (!target) {
+      return res.status(404).json({ error: 'Category not found.' });
+    }
+
+    categories = categories.filter((c) => c.id !== id);
+    writeStore(CATEGORIES_FILE, categories);
+
+    logAuditAction('delete_category', id, `Removed category "${target.label}"`, adminUser.email);
+
+    return res.status(200).json({ success: true, message: 'Category removed successfully.' });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    return res.status(500).json({ error: 'Failed to delete category.' });
+  }
+});
+
+// 6. Reports and Removal Requests (Admin Management)
+app.get('/api/reports', requireAdminAuth, (req: Request, res: Response) => {
+  const reports = readStore<any[]>(REPORTS_FILE, []);
+  const { status } = req.query;
+
+  let filtered = reports;
+  if (status && typeof status === 'string' && status !== 'all') {
+    filtered = filtered.filter((r) => r.status === status);
   }
 
   return res.status(200).json({
-    releases: result,
-    total: result.length,
+    reports: filtered,
+    total: filtered.length,
+    counts: {
+      pending: reports.filter((r) => r.status === 'pending').length,
+      reviewing: reports.filter((r) => r.status === 'reviewing').length,
+      resolved: reports.filter((r) => r.status === 'resolved').length,
+      dismissed: reports.filter((r) => r.status === 'dismissed').length,
+    },
   });
 });
 
-// 7. Get Moderation Audit Logs (Admin)
-app.get('/api/moderation-logs', (_req: Request, res: Response) => {
+app.post('/api/reports/:id/action', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { action, resolutionNotes, executeTakedown } = req.body;
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+
+    const validActions = ['reviewing', 'resolved', 'dismissed'];
+    if (!action || !validActions.includes(action)) {
+      return res.status(400).json({ error: `Invalid report action. Must be one of: ${validActions.join(', ')}` });
+    }
+
+    const reports = readStore<any[]>(REPORTS_FILE, []);
+    const index = reports.findIndex((r) => r.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Report not found.' });
+    }
+
+    const report = reports[index];
+    report.status = action;
+    report.resolutionNotes = resolutionNotes ? String(resolutionNotes).trim() : null;
+    report.resolvedBy = adminUser.email;
+    report.resolvedAt = new Date().toISOString();
+
+    // If takedown requested, execute immediately
+    if (executeTakedown === true && report.targetId) {
+      let published = readStore<any[]>(PUBLISHED_FILE, []);
+      published = published.filter((p) => p.id !== report.targetId && p.submissionId !== report.targetId);
+      writeStore(PUBLISHED_FILE, published);
+      report.takedownExecuted = true;
+    }
+
+    reports[index] = report;
+    writeStore(REPORTS_FILE, reports);
+
+    logAuditAction(
+      'report_resolution',
+      report.id,
+      `Report ${report.referenceCode} updated to [${action.toUpperCase()}]${executeTakedown ? ' (Takedown Executed)' : ''}`,
+      adminUser.email,
+      { resolutionNotes: resolutionNotes || '' }
+    );
+
+    return res.status(200).json({
+      success: true,
+      report,
+      message: `Report status updated to ${action}.`,
+    });
+  } catch (err) {
+    console.error('Error updating report:', err);
+    return res.status(500).json({ error: 'Failed to process report action.' });
+  }
+});
+
+// 7. User Management (Admin Accounts)
+app.get('/api/admin/users', requireAdminAuth, (_req: Request, res: Response) => {
+  const users = getActiveAdminUsers();
+  return res.status(200).json({ users });
+});
+
+app.post('/api/admin/users', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { email, displayName, role = 'moderator', notes = '' } = req.body;
+    const currentAdmin = (req as any).adminUser as AdminUserRecord;
+
+    if (currentAdmin.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only Super Administrators can provision new administrative credentials.' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email.trim())) {
+      return res.status(400).json({ error: 'A valid administrator email address is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const users = getActiveAdminUsers();
+
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return res.status(400).json({ error: 'An administrator account with this email already exists.' });
+    }
+
+    const newUser: AdminUserRecord = {
+      id: `adm_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+      email: cleanEmail,
+      displayName: (displayName || cleanEmail.split('@')[0]).trim(),
+      role: ['super_admin', 'moderator', 'editor'].includes(role) ? role : 'moderator',
+      status: 'active',
+      notes: notes.trim(),
+      addedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+    writeStore(ADMIN_USERS_FILE, users);
+
+    logAuditAction('create_admin', newUser.id, `Provisioned ${newUser.role} access for ${newUser.email}`, currentAdmin.email);
+
+    return res.status(201).json({
+      success: true,
+      user: newUser,
+      message: 'Administrator user created successfully.',
+    });
+  } catch (err) {
+    console.error('Error creating admin user:', err);
+    return res.status(500).json({ error: 'Failed to create administrator account.' });
+  }
+});
+
+app.patch('/api/admin/users/:id', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { role, status, notes } = req.body;
+    const currentAdmin = (req as any).adminUser as AdminUserRecord;
+
+    if (currentAdmin.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only Super Administrators can modify administrator permissions.' });
+    }
+
+    const users = getActiveAdminUsers();
+    const index = users.findIndex((u) => u.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: 'Administrator user not found.' });
+    }
+
+    const user = users[index];
+
+    // Cannot revoke primary super_admin
+    if (user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() && status === 'revoked') {
+      return res.status(400).json({ error: 'Cannot revoke the master founder administrator account.' });
+    }
+
+    if (['super_admin', 'moderator', 'editor'].includes(role)) user.role = role;
+    if (['active', 'revoked'].includes(status)) user.status = status;
+    if (notes !== undefined) user.notes = notes.trim();
+
+    users[index] = user;
+    writeStore(ADMIN_USERS_FILE, users);
+
+    logAuditAction('update_admin', user.id, `Updated admin permissions for ${user.email} (Role: ${user.role}, Status: ${user.status})`, currentAdmin.email);
+
+    return res.status(200).json({
+      success: true,
+      user,
+      message: 'Administrator account updated.',
+    });
+  } catch (err) {
+    console.error('Error updating admin user:', err);
+    return res.status(500).json({ error: 'Failed to update administrator.' });
+  }
+});
+
+// 8. Website Settings Endpoints
+app.get('/api/settings', requireAdminAuth, (_req: Request, res: Response) => {
+  const settings = readStore<any>(SETTINGS_FILE, {});
+  return res.status(200).json({ settings });
+});
+
+app.patch('/api/settings', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const adminUser = (req as any).adminUser as AdminUserRecord;
+    const current = readStore<any>(SETTINGS_FILE, {});
+    const updates = req.body;
+
+    const updated = {
+      ...current,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      updatedBy: adminUser.email,
+    };
+
+    writeStore(SETTINGS_FILE, updated);
+    logAuditAction('update_settings', 'system_settings', 'Updated website governance and branding settings', adminUser.email);
+
+    return res.status(200).json({
+      success: true,
+      settings: updated,
+      message: 'Website settings saved and deployed.',
+    });
+  } catch (err) {
+    console.error('Error updating settings:', err);
+    return res.status(500).json({ error: 'Failed to save website settings.' });
+  }
+});
+
+// 9. Moderation Audit Logs (Admin)
+app.get('/api/moderation-logs', requireAdminAuth, (_req: Request, res: Response) => {
   const logs = readStore<any[]>(LOGS_FILE, []);
   return res.status(200).json({ logs });
-});
-
-// 8. Health & Config endpoint
-app.get('/api/health', (_req: Request, res: Response) => {
-  return res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uploadsReady: fs.existsSync(UPLOADS_DIR),
-    dataReady: fs.existsSync(DATA_DIR),
-  });
 });
 
 // ==========================================
