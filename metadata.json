@@ -1,0 +1,6 @@
+{
+  "name": "ONLYTOK — Creator Discovery & Entertainment",
+  "description": "Official master brand foundation for ONLYTOK (@onlytokgirls). Dark luxury entertainment, verified 18+ creator discovery, and brand partnerships.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
