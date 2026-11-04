@@ -17,8 +17,11 @@ import {
   HelpCircle,
   FileText,
 } from 'lucide-react';
+import { useApiAvailability } from '../lib/api';
+import { ApiUnavailableNotice } from '../components/common/ApiUnavailableNotice';
 
 export const ContactView: React.FC = () => {
+  const { available: apiAvailable } = useApiAvailability();
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [department, setDepartment] = useState<string>('general');
@@ -137,9 +140,11 @@ export const ContactView: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left 2 Cols: Interactive Contact Form */}
+        {/* Left 2 Cols: Interactive Contact Form (or honest unavailable state) */}
         <div className="lg:col-span-2">
-          {successRef ? (
+          {apiAvailable === false ? (
+            <ApiUnavailableNotice feature="Contact inquiries" contactEmail="contact@onlytok.com" />
+          ) : successRef ? (
             <div className="p-8 rounded-3xl bg-[#121217] border border-white/10 shadow-2xl space-y-5 text-center">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
                 <CheckCircle2 className="w-7 h-7" />

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { assetUrl } from '../../utils/assets';
 import { OnlyTokLogo } from './OnlyTokLogo';
 import { BRAND_COLORS } from '../../utils/submissionValidator';
 import { Copy, Check, Sparkles, Layers, Type, Palette, Shield } from 'lucide-react';
@@ -250,7 +251,7 @@ export const BrandSystemSection: React.FC = () => {
           <div className="rounded-2xl bg-[#121217] border border-white/[0.08] p-6 sm:p-8 flex flex-col lg:flex-row items-center gap-8">
             <div className="w-full lg:w-7/12 rounded-xl overflow-hidden aspect-video border border-white/10 relative shadow-2xl">
               <img
-                src="/images/onlytok_social_share_card_1793722066290.jpg"
+                src={assetUrl("/images/onlytok_social_share_card_1793722066290.jpg")}
                 alt="ONLYTOK Official OpenGraph Social Share Card"
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover"

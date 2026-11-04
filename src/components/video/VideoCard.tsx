@@ -1,4 +1,5 @@
 import React from 'react';
+import { assetUrl } from '../../utils/assets';
 import { Play, Music, ShieldCheck } from 'lucide-react';
 import { VideoItem } from '../../data/contentRegistry';
 
@@ -40,7 +41,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
         aria-label={`Play video: ${video.title} by ${video.creatorName}`}
       >
         <img
-          src={video.thumbnailUrl}
+          src={assetUrl(video.thumbnailUrl)}
           alt={`Authorized video thumbnail: ${video.title} by ${video.creatorName}`}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -94,7 +95,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
         >
           <div className="w-7 h-7 rounded-full overflow-hidden bg-[#181822] border border-[#FF2A85]/30 shrink-0">
             <img
-              src={video.thumbnailUrl}
+              src={assetUrl(video.thumbnailUrl)}
               alt={video.creatorName}
               className="w-full h-full object-cover"
             />

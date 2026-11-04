@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, Lock, AlertTriangle, FileText, CheckCircle2, Send, Loader2 } from 'lucide-react';
+import { useApiAvailability } from '../../lib/api';
+import { ApiUnavailableNotice } from '../common/ApiUnavailableNotice';
 
 interface ComplianceModalProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitSuccessCode, setSubmitSuccessCode] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { available: apiAvailable } = useApiAvailability();
 
   if (!isOpen) return null;
 
@@ -199,7 +202,9 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({
                 Creators and copyright owners have the sovereign right to withdraw consent or request content removal at any time.
               </p>
 
-              {submitSuccessCode ? (
+              {apiAvailable === false ? (
+                <ApiUnavailableNotice feature="Takedown notices" contactEmail="legal@onlytok.com" compact />
+              ) : submitSuccessCode ? (
                 <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-white">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />

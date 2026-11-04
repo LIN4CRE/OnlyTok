@@ -22,8 +22,11 @@ import {
 } from 'lucide-react';
 import { normalizeTikTokHandle } from '../utils/submissionValidator';
 import { trackSubmissionStart, trackSubmissionSuccess } from '../utils/analytics';
+import { useApiAvailability } from '../lib/api';
+import { ApiUnavailableNotice } from '../components/common/ApiUnavailableNotice';
 
 export const SubmitView: React.FC = () => {
+  const { available: apiAvailable } = useApiAvailability();
   // Submission Form State
   const [creatorName, setCreatorName] = useState<string>('');
   const [tiktokHandle, setTiktokHandle] = useState<string>('');
@@ -322,6 +325,25 @@ export const SubmitView: React.FC = () => {
       setIsTracking(false);
     }
   };
+
+  // Static deployment (no API server): submissions cannot be processed here.
+  // Show an honest unavailable state with real alternative contact channels.
+  if (apiAvailable === false) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-16">
+        <div className="max-w-3xl mb-12">
+          <div className="text-xs font-bold uppercase tracking-widest text-[#FF2A85] mb-2 font-mono flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Creator Portal & Video Desk</span>
+          </div>
+          <h1 className="font-display font-black text-3xl sm:text-5xl text-white tracking-tight leading-tight">
+            Submit Content to ONLYTOK.
+          </h1>
+        </div>
+        <ApiUnavailableNotice feature="Creator submissions" contactEmail="creators@onlytok.com" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-16">

@@ -9,6 +9,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { fileURLToPath } from 'url';
 
 dotenv.config();
@@ -16,21 +18,39 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Canonical public origin used for SEO/sitemap fallbacks (override per deployment).
+const APP_URL = (process.env.APP_URL || 'https://onlytok.uk').replace(/\/+$/, '');
 
-// Ensure persistence directories exist
-const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
-const DATA_DIR = path.resolve(__dirname, 'data_store');
-
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Firebase project used to verify admin ID tokens. The web config is public by
+// design; the project id is not a secret. Override with FIREBASE_PROJECT_ID.
+let firebaseProjectId = process.env.FIREBASE_PROJECT_ID || '';
+if (!firebaseProjectId) {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8'));
+    firebaseProjectId = cfg.projectId || '';
+  } catch {
+    firebaseProjectId = '';
+  }
 }
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// Optional break-glass API token for server-to-server / emergency admin access
+// when Firebase Auth is unavailable. Must be a long random secret; never commit it.
+const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN || '';
+
+// Persistence directories (overridable for tests / Docker volumes).
+const UPLOADS_DIR = path.resolve(process.env.ONLYTOK_UPLOADS_DIR || path.join(__dirname, 'uploads'));
+const DATA_DIR = path.resolve(process.env.ONLYTOK_DATA_DIR || path.join(__dirname, 'data_store'));
+const SEED_DIR = path.resolve(__dirname, 'seed');
+
+// Total disk quota for uploaded media (default 2 GB). Prevents disk exhaustion.
+const MAX_UPLOADS_BYTES = (parseInt(process.env.MAX_UPLOADS_MB || '2048', 10) || 2048) * 1024 * 1024;
+
+for (const dir of [UPLOADS_DIR, DATA_DIR]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 // Data Store File Paths
@@ -49,7 +69,9 @@ const ANALYTICS_FILE = path.join(DATA_DIR, 'analytics.json');
 import { AUTHORIZED_VIDEOS, AUTHORIZED_CREATORS, getVideoById, getCreatorById } from './src/data/contentRegistry';
 import { generateSitemapXml, generateRobotsTxt, getSeoMetadata } from './src/utils/seo';
 
-// Helper to safely read/write persistent JSON stores
+// Helper to safely read/write persistent JSON stores.
+// Writes are atomic (temp file + rename) so a crash mid-write cannot corrupt a
+// store. Corrupt files are quarantined (renamed) rather than silently discarded.
 function readStore<T>(filePath: string, defaultVal: T): T {
   try {
     if (fs.existsSync(filePath)) {
@@ -58,15 +80,60 @@ function readStore<T>(filePath: string, defaultVal: T): T {
     }
   } catch (err) {
     console.error(`Error reading ${filePath}:`, err);
+    try {
+      const quarantine = `${filePath}.corrupt-${Date.now()}`;
+      fs.renameSync(filePath, quarantine);
+      console.error(`Quarantined corrupt store to ${quarantine}`);
+    } catch (renameErr) {
+      console.error(`Failed to quarantine corrupt store ${filePath}:`, renameErr);
+    }
   }
   return defaultVal;
 }
 
 function writeStore<T>(filePath: string, data: T): void {
+  const tmpPath = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
   try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
   } catch (err) {
     console.error(`Error writing ${filePath}:`, err);
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      /* best-effort cleanup */
+    }
+    throw err;
+  }
+}
+
+// Seed fresh installations with sanitized defaults (no personal data). Runtime
+// stores live in DATA_DIR and are never committed to git.
+function seedStores(): void {
+  const seeds: Array<[string, unknown]> = [
+    [CATEGORIES_FILE, []],
+    [SETTINGS_FILE, {}],
+    [CREATORS_FILE, []],
+    [ADMIN_USERS_FILE, []],
+    [SUBMISSIONS_FILE, []],
+    [PUBLISHED_FILE, []],
+    [REPORTS_FILE, []],
+    [LOGS_FILE, []],
+    [GDPR_REQUESTS_FILE, []],
+    [CONTACT_INQUIRIES_FILE, []],
+  ];
+  for (const [file, fallback] of seeds) {
+    if (fs.existsSync(file)) continue;
+    const seedFile = path.join(SEED_DIR, path.basename(file));
+    try {
+      if (fs.existsSync(seedFile)) {
+        fs.copyFileSync(seedFile, file);
+      } else {
+        writeStore(file, fallback);
+      }
+    } catch (err) {
+      console.error(`Failed to seed ${file}:`, err);
+    }
   }
 }
 
@@ -76,6 +143,15 @@ interface RateLimitBucket {
   resetTime: number;
 }
 const rateLimitMap = new Map<string, RateLimitBucket>();
+
+// Periodically evict expired buckets so the map cannot grow without bound.
+const rateLimitSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitMap) {
+    if (now > bucket.resetTime) rateLimitMap.delete(key);
+  }
+}, 60 * 1000);
+rateLimitSweep.unref();
 
 function rateLimiter(maxRequests: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -101,9 +177,30 @@ function rateLimiter(maxRequests: number, windowMs: number) {
   };
 }
 
+// Current total size of the uploads directory (bounded, cheap for this scale).
+function uploadsDiskUsage(): number {
+  try {
+    return fs
+      .readdirSync(UPLOADS_DIR)
+      .reduce((sum, name) => {
+        try {
+          return sum + fs.statSync(path.join(UPLOADS_DIR, name)).size;
+        } catch {
+          return sum;
+        }
+      }, 0);
+  } catch {
+    return 0;
+  }
+}
+
 // Multer storage and validation for video uploads
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
+    if (uploadsDiskUsage() >= MAX_UPLOADS_BYTES) {
+      cb(new Error('Upload storage is full. Please contact the site administrator.'), '');
+      return;
+    }
     cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
@@ -133,7 +230,13 @@ const upload = multer({
 });
 
 // Admin Authentication & Permission System
-const SUPER_ADMIN_EMAIL = 'dlinacre16@gmail.com';
+//
+// SECURITY: Admin access requires a cryptographically verified credential:
+//   1. A Firebase ID token (RS256 JWT) issued by Google securetoken for the
+//      configured Firebase project, with a verified email on the admin list, OR
+//   2. The optional ADMIN_API_TOKEN break-glass secret (constant-time compared).
+// Spoofable headers (e.g. X-Admin-Email) and hardcoded dev tokens are NOT accepted.
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'dlinacre16@gmail.com').toLowerCase();
 
 interface AdminUserRecord {
   id: string;
@@ -149,7 +252,7 @@ interface AdminUserRecord {
 function getActiveAdminUsers(): AdminUserRecord[] {
   const users = readStore<AdminUserRecord[]>(ADMIN_USERS_FILE, []);
   // Ensure primary super_admin is always authorized
-  if (!users.some((u) => u.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
+  if (!users.some((u) => u.email.toLowerCase() === SUPER_ADMIN_EMAIL)) {
     users.unshift({
       id: 'adm_super_01',
       email: SUPER_ADMIN_EMAIL,
@@ -160,41 +263,87 @@ function getActiveAdminUsers(): AdminUserRecord[] {
       addedAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
     });
-    writeStore(ADMIN_USERS_FILE, users);
+    try {
+      writeStore(ADMIN_USERS_FILE, users);
+    } catch (err) {
+      console.error('Failed to persist super admin seed:', err);
+    }
   }
   return users;
 }
 
-function resolveAdmin(req: Request): AdminUserRecord | null {
-  const adminEmailHeader = req.headers['x-admin-email'] as string | undefined;
-  const authHeader = req.headers.authorization;
+// Google's public JWKS for Firebase ID tokens (no service-account secret needed).
+const FIREBASE_JWKS = firebaseProjectId
+  ? createRemoteJWKSet(
+      new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
+    )
+  : null;
 
-  let candidateEmail = '';
-  if (adminEmailHeader) {
-    candidateEmail = adminEmailHeader.toLowerCase().trim();
-  } else if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.replace('Bearer ', '').trim();
-    if (token.includes('@')) {
-      candidateEmail = token.toLowerCase().trim();
-    } else if (token === 'admin-authenticated-token' || token === 'dev-admin-session') {
-      candidateEmail = SUPER_ADMIN_EMAIL;
+function timingSafeEqualString(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function touchAdminLastActive(admin: AdminUserRecord): void {
+  try {
+    const last = admin.lastActiveAt ? Date.parse(admin.lastActiveAt) : 0;
+    if (Date.now() - last < 5 * 60 * 1000) return; // throttle writes
+    const users = getActiveAdminUsers();
+    const match = users.find((u) => u.id === admin.id);
+    if (match) {
+      match.lastActiveAt = new Date().toISOString();
+      writeStore(ADMIN_USERS_FILE, users);
     }
+  } catch {
+    /* non-critical */
   }
+}
 
-  if (!candidateEmail) {
+async function resolveAdmin(req: Request): Promise<AdminUserRecord | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) return null;
+
+  // 1. Break-glass static API token (server-to-server / emergency access).
+  if (ADMIN_API_TOKEN && timingSafeEqualString(token, ADMIN_API_TOKEN)) {
+    const admins = getActiveAdminUsers();
+    const superAdmin = admins.find((u) => u.email.toLowerCase() === SUPER_ADMIN_EMAIL && u.status === 'active');
+    if (superAdmin) {
+      touchAdminLastActive(superAdmin);
+      return superAdmin;
+    }
     return null;
   }
 
-  const admins = getActiveAdminUsers();
-  const match = admins.find(
-    (u) => u.email.toLowerCase() === candidateEmail && u.status === 'active'
-  );
+  // 2. Firebase ID token (JWT). Verify signature, issuer, audience, expiry.
+  if (FIREBASE_JWKS && token.split('.').length === 3) {
+    try {
+      const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
+        issuer: `https://securetoken.google.com/${firebaseProjectId}`,
+        audience: firebaseProjectId,
+      });
+      const email = typeof payload.email === 'string' ? payload.email.toLowerCase().trim() : '';
+      if (!email || payload.email_verified !== true || !payload.sub) return null;
 
-  return match || null;
+      const admins = getActiveAdminUsers();
+      const match = admins.find((u) => u.email.toLowerCase() === email && u.status === 'active');
+      if (match) {
+        touchAdminLastActive(match);
+        return match;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
-function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
-  const admin = resolveAdmin(req);
+async function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+  const admin = await resolveAdmin(req);
   if (!admin) {
     return res.status(401).json({
       error: 'Unauthorized: Valid administrator credentials required to access this resource.',
@@ -229,6 +378,61 @@ function logAuditAction(
   }
 }
 
+// ==========================================
+// Application factory (exported for tests)
+// ==========================================
+export function createApp() {
+  const app = express();
+
+  // Correct client IPs behind a reverse proxy (nginx, Docker, etc.). Configure
+  // TRUST_PROXY to match your topology (e.g. "1" for a single proxy hop).
+  app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
+  app.disable('x-powered-by');
+
+  // Security headers. CSP is enforced in production; dev needs Vite HMR inline
+  // scripts, so it is relaxed there. Firebase Auth + Google Fonts are allowed.
+  app.use(
+    helmet({
+      contentSecurityPolicy: IS_PRODUCTION
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'", 'https://apis.google.com', 'https://www.gstatic.com', 'https://www.googleapis.com'],
+              styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+              fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+              imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+              mediaSrc: ["'self'", 'blob:', 'https:'],
+              connectSrc: [
+                "'self'",
+                'https://*.googleapis.com',
+                'https://*.google.com',
+                'https://*.firebaseapp.com',
+                'https://*.firebaseio.com',
+                'wss://*.firebaseio.com',
+              ],
+              frameSrc: ['https://accounts.google.com', 'https://*.firebaseapp.com'],
+              objectSrc: ["'none'"],
+              baseUri: ["'self'"],
+              formAction: ["'self'"],
+              frameAncestors: ["'none'"],
+            },
+          }
+        : false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'same-site' },
+    })
+  );
+
+  // JSON bodies are small (uploads use multipart). 1 MB is generous.
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+  seedStores();
+  registerRoutes(app);
+  return app;
+}
+
+function registerRoutes(app: express.Express) {
 // ==========================================
 // Public Endpoints
 // ==========================================
@@ -419,7 +623,7 @@ app.post(
       }
 
       const year = new Date().getFullYear();
-      const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
+      const randomSuffix = crypto.randomBytes(6).toString('hex').toUpperCase();
       const referenceCode = `OT-CR-${year}-${randomSuffix}`;
       const submissionId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
@@ -601,7 +805,7 @@ app.post(
       }
 
       const year = new Date().getFullYear();
-      const code = `DMCA-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const code = `DMCA-${year}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
       const isCritical = ['ncii_report', 'age_verification'].includes(reportType);
 
       const newReport = {
@@ -678,7 +882,7 @@ app.post(
       }
 
       const year = new Date().getFullYear();
-      const code = `GDPR-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const code = `GDPR-${year}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
       const newRequest = {
         id: `gdpr_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         referenceCode: code,
@@ -738,7 +942,7 @@ app.post(
       }
 
       const year = new Date().getFullYear();
-      const code = `INQ-${year}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      const code = `INQ-${year}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
       const newInquiry = {
         id: `inq_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         referenceCode: code,
@@ -775,8 +979,8 @@ app.post(
 // ==========================================
 
 // Verify Admin Session / Token
-app.post('/api/admin/verify', (req: Request, res: Response) => {
-  const admin = resolveAdmin(req);
+app.post('/api/admin/verify', async (req: Request, res: Response) => {
+  const admin = await resolveAdmin(req);
   if (!admin) {
     return res.status(401).json({
       authenticated: false,
@@ -828,8 +1032,9 @@ app.get('/api/admin/statistics', requireAdminAuth, (_req: Request, res: Response
   }
 });
 
-// 2. Submissions Queue (Admin)
-app.get('/api/submissions', (req: Request, res: Response) => {
+// 2. Submissions Queue (Admin). The reference-code lookup is public but
+// rate-limited; the full queue requires verified admin credentials.
+app.get('/api/submissions', rateLimiter(60, 15 * 60 * 1000), async (req: Request, res: Response) => {
   const submissions = readStore<any[]>(SUBMISSIONS_FILE, []);
   const { status, referenceCode } = req.query;
 
@@ -853,7 +1058,7 @@ app.get('/api/submissions', (req: Request, res: Response) => {
   }
 
   // Admin access check for full queue
-  const admin = resolveAdmin(req);
+  const admin = await resolveAdmin(req);
   if (!admin) {
     return res.status(401).json({ error: 'Administrator access required.' });
   }
@@ -1584,11 +1789,36 @@ app.post('/api/privacy/gdpr-requests/:id/action', requireAdminAuth, (req: Reques
     item.processedBy = adminUser.email;
     item.completedAt = new Date().toISOString();
 
-    // If erasure requested, purge any matching submissions
+    // If erasure requested, purge the data subject's personal data across ALL
+    // stores (UK GDPR Art. 17). Public releases tied to erased submissions are
+    // removed too; the GDPR request itself is anonymized but kept for audit.
     if (item.requestType === 'erasure_deletion' && action === 'completed') {
-      let subs = readStore<any[]>(SUBMISSIONS_FILE, []);
-      subs = subs.filter((s) => s.email.toLowerCase() !== item.email.toLowerCase());
-      writeStore(SUBMISSIONS_FILE, subs);
+      const targetEmail = item.email.toLowerCase();
+
+      const subs = readStore<any[]>(SUBMISSIONS_FILE, []);
+      const erasedHandles = new Set(
+        subs.filter((s) => s.email?.toLowerCase() === targetEmail).map((s) => s.tiktokHandle?.toLowerCase()).filter(Boolean)
+      );
+      const remainingSubs = subs.filter((s) => s.email?.toLowerCase() !== targetEmail);
+      writeStore(SUBMISSIONS_FILE, remainingSubs);
+
+      let published = readStore<any[]>(PUBLISHED_FILE, []);
+      published = published.filter((p) => !erasedHandles.has(p.tiktokHandle?.toLowerCase()));
+      writeStore(PUBLISHED_FILE, published);
+
+      const inquiries = readStore<any[]>(CONTACT_INQUIRIES_FILE, []);
+      writeStore(CONTACT_INQUIRIES_FILE, inquiries.filter((c) => c.email?.toLowerCase() !== targetEmail));
+
+      const reports = readStore<any[]>(REPORTS_FILE, []);
+      writeStore(REPORTS_FILE, reports.filter((r) => r.reporterEmail?.toLowerCase() !== targetEmail));
+
+      const creators = readStore<any[]>(CREATORS_FILE, []);
+      writeStore(CREATORS_FILE, creators.filter((c) => c.email?.toLowerCase() !== targetEmail));
+
+      // Anonymize the request record itself (retain reference/status for audit).
+      item.fullName = '[ERASED]';
+      item.email = '[ERASED]';
+      item.details = '[ERASED UNDER UK GDPR ART. 17]';
     }
 
     requests[index] = item;
@@ -1622,7 +1852,7 @@ app.get('/api/admin/contact-inquiries', requireAdminAuth, (_req: Request, res: R
 // 12. SEO Crawl Directives & XML Sitemap
 // ==========================================
 app.get('/robots.txt', (_req: Request, res: Response) => {
-  const baseUrl = process.env.APP_URL || `http://${_req.headers.host}`;
+  const baseUrl = APP_URL;
   const robots = generateRobotsTxt(baseUrl);
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1630,7 +1860,7 @@ app.get('/robots.txt', (_req: Request, res: Response) => {
 });
 
 app.get('/sitemap.xml', (_req: Request, res: Response) => {
-  const baseUrl = process.env.APP_URL || `http://${_req.headers.host}`;
+  const baseUrl = APP_URL;
   const sitemap = generateSitemapXml(baseUrl, AUTHORIZED_VIDEOS, AUTHORIZED_CREATORS);
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -1689,7 +1919,10 @@ app.post('/api/analytics/event', rateLimiter(120, 60 * 1000), (req: Request, res
       targetName: typeof targetName === 'string' ? targetName.substring(0, 100) : undefined,
       sourceLocation: typeof sourceLocation === 'string' ? sourceLocation.substring(0, 60) : undefined,
       category: typeof category === 'string' ? category.substring(0, 60) : undefined,
-      metadata: typeof metadata === 'object' && metadata !== null ? metadata : undefined,
+      metadata:
+        typeof metadata === 'object' && metadata !== null && JSON.stringify(metadata).length <= 2000
+          ? metadata
+          : undefined,
       sessionId: typeof sessionId === 'string' ? sessionId.substring(0, 60) : 'anon',
       anonIpHash,
       referrer: typeof referrer === 'string' ? referrer.substring(0, 120) : undefined,
@@ -1808,7 +2041,7 @@ app.get('/api/analytics/summary', requireAdminAuth, (_req: Request, res: Respons
       seoHealth: {
         robotsTxtStatus: 'Active & Verified',
         sitemapXmlStatus: 'Dynamic & Compliant',
-        canonicalBaseUrl: process.env.APP_URL || 'https://ais-pre-wca3gymqm4667w4fien6h5-183479119885.europe-west2.run.app',
+        canonicalBaseUrl: APP_URL,
         openGraphDimensions: '1200x675 HD',
         indexedUrlsCount: 13 + AUTHORIZED_VIDEOS.length + AUTHORIZED_CREATORS.length,
         botCrawlerSupport: ['Googlebot', 'Bingbot', 'Twitterbot', 'facebookexternalhit', 'TikTokBot', 'ByteDance'],
@@ -1819,6 +2052,20 @@ app.get('/api/analytics/summary', requireAdminAuth, (_req: Request, res: Respons
     return res.status(500).json({ error: 'Failed to generate analytics summary.' });
   }
 });
+
+// Centralized API error handler (malformed JSON, oversized bodies, etc.).
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON in request body.' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body exceeds the allowed size.' });
+  }
+  console.error('Unhandled request error:', err);
+  return res.status(500).json({ error: 'Internal server error.' });
+});
+} // end registerRoutes
 
 // Helper to escape HTML attributes safely
 function escapeHtml(str: string): string {
@@ -1833,7 +2080,7 @@ function escapeHtml(str: string): string {
 // Server-side HTML dynamic meta tag injector for social bots and crawlers
 function injectSeoTags(html: string, req: Request): string {
   try {
-    const baseUrl = process.env.APP_URL || `http://${req.headers.host}`;
+    const baseUrl = APP_URL;
     const videoId = typeof req.query.video === 'string' ? req.query.video : undefined;
     const creatorId = typeof req.query.creator === 'string' ? req.query.creator : undefined;
     const tab = typeof req.query.tab === 'string' ? req.query.tab : undefined;
@@ -1913,12 +2160,16 @@ function injectSeoTags(html: string, req: Request): string {
 // Vite Dev Server / Static Production Mounting
 // ==========================================
 async function startServer() {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const app = createApp();
 
-  if (isDev) {
+  if (!IS_PRODUCTION) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        // Allow the Arena/E2B sandbox preview host and local development.
+        allowedHosts: ['.e2b.app', 'localhost', '127.0.0.1'],
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1938,6 +2189,12 @@ async function startServer() {
     });
   } else {
     const distPath = path.resolve(__dirname, 'dist');
+    if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+      console.error('Production build not found. Run "npm run build" before "npm start".');
+      process.exit(1);
+    }
+    // Hashed build assets can be cached aggressively.
+    app.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '1y', immutable: true }));
     app.use(express.static(distPath));
     app.get('*', (req: Request, res: Response) => {
       try {
@@ -1950,12 +2207,29 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`ONLYTOK backend and web server running on port ${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`ONLYTOK ${IS_PRODUCTION ? 'production' : 'development'} server running on http://${HOST}:${PORT}`);
+    if (!FIREBASE_JWKS && !ADMIN_API_TOKEN) {
+      console.warn('WARNING: No Firebase project or ADMIN_API_TOKEN configured — admin endpoints will reject all requests.');
+    }
   });
+
+  // Graceful shutdown: stop accepting connections, let in-flight requests finish.
+  const shutdown = (signal: string) => {
+    console.log(`${signal} received — shutting down gracefully...`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-startServer().catch((err) => {
-  console.error('Fatal error starting ONLYTOK server:', err);
-  process.exit(1);
-});
+// Only auto-start when executed directly (node server.js / tsx server.ts),
+// not when imported by tests.
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isMainModule) {
+  startServer().catch((err) => {
+    console.error('Fatal error starting ONLYTOK server:', err);
+    process.exit(1);
+  });
+}

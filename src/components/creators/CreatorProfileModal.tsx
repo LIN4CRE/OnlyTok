@@ -1,4 +1,5 @@
 import React from 'react';
+import { assetUrl } from '../../utils/assets';
 import { X, ShieldCheck, ExternalLink, Video, Sparkles } from 'lucide-react';
 import { Creator, getAuthorizedVideos, VideoItem } from '../../data/contentRegistry';
 import { VideoCard } from '../video/VideoCard';
@@ -55,7 +56,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
             <div className="relative">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-[#181822] border-4 border-[#0F0F14] shadow-2xl">
                 <img
-                  src={creator.avatarUrl}
+                  src={assetUrl(creator.avatarUrl)}
                   alt={`Verified profile photo of ${creator.displayName} (${creator.username})`}
                   loading="lazy"
                   decoding="async"

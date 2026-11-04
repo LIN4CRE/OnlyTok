@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { X, AlertTriangle, ShieldAlert, CheckCircle2, Send, Loader2, Flag } from 'lucide-react';
+import { useApiAvailability } from '../../lib/api';
+import { ApiUnavailableNotice } from '../common/ApiUnavailableNotice';
 
 interface ReportContentModalProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successCode, setSuccessCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { available: apiAvailable } = useApiAvailability();
 
   if (!isOpen) return null;
 
@@ -126,7 +129,9 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
           </div>
         )}
 
-        {successCode ? (
+        {apiAvailable === false ? (
+          <ApiUnavailableNotice feature="Content reports" contactEmail="legal@onlytok.com" compact />
+        ) : successCode ? (
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2">
               <div className="flex items-center gap-2 font-bold text-white text-sm">

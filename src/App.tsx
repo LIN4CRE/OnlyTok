@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { TopBar, NavTab } from './components/navigation/TopBar';
 import { MobileTabBar } from './components/navigation/MobileTabBar';
 import { MobileMenu } from './components/navigation/MobileMenu';
@@ -15,7 +15,6 @@ import { DiscoverView } from './views/DiscoverView';
 import { CreatorsView } from './views/CreatorsView';
 import { SubmitView } from './views/SubmitView';
 import { AboutView } from './views/AboutView';
-import { AdminModerationView } from './views/AdminModerationView';
 import { LegalView, LegalTab } from './views/LegalView';
 import { RemovalRequestView } from './views/RemovalRequestView';
 import { ContactView } from './views/ContactView';
@@ -28,8 +27,11 @@ import { ComplianceModal } from './components/legal/ComplianceModal';
 import { CookieConsentBanner } from './components/legal/CookieConsentBanner';
 import { ReportContentModal } from './components/legal/ReportContentModal';
 
-// Firebase Connection Tester
-import { testFirestoreConnection } from './lib/firebase';
+// The admin console (Firebase Auth + 2700-line moderation UI) is code-split so
+// it never weighs down the public bundle. It loads only when /?tab=admin is opened.
+const AdminModerationView = lazy(() =>
+  import('./views/AdminModerationView').then((m) => ({ default: m.AdminModerationView }))
+);
 
 // Registry
 import {
@@ -77,11 +79,6 @@ export default function App() {
     isOpen: boolean;
     tab?: 'age' | 'rights' | 'privacy' | 'takedown';
   }>({ isOpen: false });
-
-  // Boot connection check to Firestore as required by firebase-integration-rpc
-  useEffect(() => {
-    testFirestoreConnection().catch(() => {});
-  }, []);
 
   // Handle URL params for direct video, creator, or tab links
   useEffect(() => {
@@ -231,7 +228,17 @@ export default function App() {
 
         {activeTab === 'contact' && <ContactView />}
 
-        {activeTab === 'admin' && <AdminModerationView />}
+        {activeTab === 'admin' && (
+          <Suspense
+            fallback={
+              <div className="min-h-[70vh] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-[#FF2A85] border-t-transparent animate-spin" aria-label="Loading admin console" />
+              </div>
+            }
+          >
+            <AdminModerationView />
+          </Suspense>
+        )}
       </main>
 
       {/* Footer */}
