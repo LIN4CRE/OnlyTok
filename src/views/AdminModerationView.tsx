@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { assetUrl } from '../utils/assets';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -45,6 +46,8 @@ import {
 } from 'lucide-react';
 import { auth, googleAuthProvider } from '../lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { useApiAvailability } from '../lib/api';
+import { ApiUnavailableNotice } from '../components/common/ApiUnavailableNotice';
 
 // Types
 export interface SubmissionItem {
@@ -209,9 +212,11 @@ export const AdminModerationView: React.FC = () => {
   // Authentication & Session
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
-  const [activeAdminEmail, setActiveAdminEmail] = useState<string>('dlinacre16@gmail.com');
-  const [activeAdminRole, setActiveAdminRole] = useState<string>('super_admin');
+  const [activeAdminEmail, setActiveAdminEmail] = useState<string>('');
+  const [activeAdminRole, setActiveAdminRole] = useState<string>('');
   const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const { available: apiAvailable } = useApiAvailability();
 
   // Active section
   const [activeSection, setActiveSection] = useState<AdminSection>('overview');
@@ -284,33 +289,34 @@ export const AdminModerationView: React.FC = () => {
   // Settings Save State
   const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
 
-  // Check auth state from Firebase and verify admin rights
+  // Check Firebase auth state and verify admin rights against the server.
+  // SECURITY: admin access requires a server-verified Firebase ID token whose
+  // verified email is on the admin list. There is no client-side unlock, dev
+  // bypass, or cached "unlocked" flag — the server is the only authority.
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-      if (user?.email) {
-        verifyAdminSession(user.email);
+      if (user) {
+        await verifyAdminSession(user);
       } else {
-        // Check if dev auto-unlocked
-        const cached = localStorage.getItem('ot_admin_unlocked');
-        if (cached === 'true') {
-          verifyAdminSession('dlinacre16@gmail.com');
-        } else {
-          setAuthChecking(false);
-        }
+        setIsAdminUnlocked(false);
+        setActiveAdminEmail('');
+        setActiveAdminRole('');
+        setAuthChecking(false);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  const verifyAdminSession = async (email: string) => {
+  const verifyAdminSession = async (user: User) => {
     try {
       setAuthChecking(true);
+      const token = await user.getIdToken();
       const res = await fetch('/api/admin/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Admin-Email': email,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -319,29 +325,26 @@ export const AdminModerationView: React.FC = () => {
         setIsAdminUnlocked(true);
         setActiveAdminEmail(data.user.email);
         setActiveAdminRole(data.user.role);
-        localStorage.setItem('ot_admin_unlocked', 'true');
+        setAuthError(null);
       } else {
         setIsAdminUnlocked(false);
+        setAuthError('This Google account is not authorised for ONLYTOK admin access.');
       }
     } catch (err) {
       console.error('Admin verification error:', err);
-      // Fallback for primary founder email
-      if (email === 'dlinacre16@gmail.com') {
-        setIsAdminUnlocked(true);
-        setActiveAdminEmail(email);
-        setActiveAdminRole('super_admin');
-      }
+      setIsAdminUnlocked(false);
+      setAuthError('Could not verify the admin session. Please try again.');
     } finally {
       setAuthChecking(false);
     }
   };
 
-  // Helper headers for admin API calls
-  const getAdminHeaders = () => {
+  // Fresh Firebase ID token per admin request (getIdToken auto-refreshes expiry).
+  const getAdminHeaders = async (): Promise<Record<string, string>> => {
+    const token = await auth.currentUser?.getIdToken();
     return {
       'Content-Type': 'application/json',
-      'X-Admin-Email': activeAdminEmail,
-      'Authorization': `Bearer ${activeAdminEmail}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   };
 
@@ -350,7 +353,7 @@ export const AdminModerationView: React.FC = () => {
     if (!isAdminUnlocked) return;
     try {
       setRefreshing(true);
-      const headers = getAdminHeaders();
+      const headers = await getAdminHeaders();
 
       // Parallel fetch of all stores
       const [
@@ -424,25 +427,23 @@ export const AdminModerationView: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     try {
+      setAuthError(null);
       const res = await signInWithPopup(auth, googleAuthProvider);
-      if (res.user?.email) {
-        await verifyAdminSession(res.user.email);
+      if (res.user) {
+        await verifyAdminSession(res.user);
       }
     } catch (err) {
       console.error('Google Sign-in error:', err);
-      // Offer direct founder sign-in for dev environment
-      verifyAdminSession('dlinacre16@gmail.com');
+      setAuthError('Google sign-in failed or was cancelled. Please try again.');
     }
-  };
-
-  const handleDevDirectUnlock = () => {
-    verifyAdminSession('dlinacre16@gmail.com');
   };
 
   const handleSignOut = async () => {
     await signOut(auth);
     setIsAdminUnlocked(false);
-    localStorage.removeItem('ot_admin_unlocked');
+    setActiveAdminEmail('');
+    setActiveAdminRole('');
+    setAuthError(null);
   };
 
   // Submissions Actions
@@ -452,7 +453,7 @@ export const AdminModerationView: React.FC = () => {
       setIsProcessing(true);
       const res = await fetch(`/api/submissions/${selectedSubmission.id}/moderate`, {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           action: actionType,
           notes: actionNotes,
@@ -483,7 +484,7 @@ export const AdminModerationView: React.FC = () => {
       setIsProcessing(true);
       const res = await fetch(`/api/submissions/${editingSubmission.id}`, {
         method: 'PATCH',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           videoTitle: editingSubmission.title,
           videoDescription: editingSubmission.desc,
@@ -511,7 +512,7 @@ export const AdminModerationView: React.FC = () => {
     try {
       const res = await fetch(`/api/published-releases/${video.id}`, {
         method: 'PATCH',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           isFeatured: !video.isFeatured,
         }),
@@ -538,7 +539,7 @@ export const AdminModerationView: React.FC = () => {
     try {
       const res = await fetch(`/api/published-releases/${video.id}`, {
         method: 'DELETE',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({ reason }),
       });
 
@@ -562,7 +563,7 @@ export const AdminModerationView: React.FC = () => {
 
       const res = await fetch(url, {
         method,
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           displayName: creatorForm.displayName,
           username: creatorForm.username,
@@ -601,7 +602,7 @@ export const AdminModerationView: React.FC = () => {
 
       const res = await fetch(url, {
         method,
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           label: categoryForm.label,
           description: categoryForm.description,
@@ -630,7 +631,7 @@ export const AdminModerationView: React.FC = () => {
     try {
       const res = await fetch(`/api/categories/${cat.id}`, {
         method: 'DELETE',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
       });
       if (res.ok) {
         setActionFeedback(`Category "${cat.label}" deleted.`);
@@ -648,7 +649,7 @@ export const AdminModerationView: React.FC = () => {
       setIsProcessing(true);
       const res = await fetch(`/api/reports/${selectedReport.id}/action`, {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify({
           action,
           resolutionNotes: reportResolutionNotes,
@@ -680,7 +681,7 @@ export const AdminModerationView: React.FC = () => {
       setIsProcessing(true);
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify(adminUserForm),
       });
 
@@ -708,7 +709,7 @@ export const AdminModerationView: React.FC = () => {
       setSettingsSaving(true);
       const res = await fetch('/api/settings', {
         method: 'PATCH',
-        headers: getAdminHeaders(),
+        headers: await getAdminHeaders(),
         body: JSON.stringify(settings),
       });
 
@@ -750,6 +751,20 @@ export const AdminModerationView: React.FC = () => {
   };
 
   // Auth Guard Screen
+  // Static deployment (no API server): the admin console cannot function here.
+  // Show an honest unavailable state — never a fake or bypassable console.
+  if (apiAvailable === false) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20">
+        <ApiUnavailableNotice feature="The admin console" contactEmail="contact@onlytok.com" />
+        <p className="text-center text-xs text-[#8E8EA0] mt-4 leading-relaxed">
+          Moderation requires the ONLYTOK API server (full-stack deployment). This static
+          edition serves the public brand site only. See <code className="text-white">docs/DEPLOYMENT.md</code>.
+        </p>
+      </div>
+    );
+  }
+
   if (authChecking) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center">
@@ -788,11 +803,17 @@ export const AdminModerationView: React.FC = () => {
               <span>Enforced Access Policies:</span>
             </div>
             <ul className="list-disc pl-4 space-y-1">
-              <li>Authorised master founder account: <code className="text-white font-mono">dlinacre16@gmail.com</code></li>
-              <li>Role-based permissions with server-side validation</li>
+              <li>Server-verified Firebase ID tokens (Google sign-in)</li>
+              <li>Role-based permissions enforced by the API</li>
               <li>Immutable audit logging for all moderation decisions</li>
             </ul>
           </div>
+
+          {authError && (
+            <div role="alert" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs text-left">
+              {authError}
+            </div>
+          )}
 
           <div className="space-y-3 pt-2">
             <button
@@ -801,13 +822,6 @@ export const AdminModerationView: React.FC = () => {
             >
               <LogIn className="w-4 h-4" />
               <span>Sign in with Google</span>
-            </button>
-
-            <button
-              onClick={handleDevDirectUnlock}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#181822] hover:bg-[#222230] border border-white/10 text-xs font-semibold text-[#A1A1AA] hover:text-white transition-colors cursor-pointer"
-            >
-              Authorise Session as Master Admin (dlinacre16@gmail.com)
             </button>
           </div>
         </div>
@@ -1639,7 +1653,7 @@ export const AdminModerationView: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <img
-                      src={c.avatarUrl}
+                      src={assetUrl(c.avatarUrl)}
                       alt={c.displayName}
                       className="w-12 h-12 rounded-full object-cover border border-[#FF2A85]/40"
                     />

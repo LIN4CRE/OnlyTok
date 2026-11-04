@@ -18,8 +18,11 @@ import {
   HelpCircle,
   FileText,
 } from 'lucide-react';
+import { useApiAvailability } from '../lib/api';
+import { ApiUnavailableNotice } from '../components/common/ApiUnavailableNotice';
 
 export const RemovalRequestView: React.FC = () => {
+  const { available: apiAvailable } = useApiAvailability();
   const [reportType, setReportType] = useState<string>('copyright_dmca');
   const [targetTitle, setTargetTitle] = useState<string>('');
   const [targetId, setTargetId] = useState<string>('');
@@ -130,7 +133,9 @@ export const RemovalRequestView: React.FC = () => {
         </div>
       </div>
 
-      {resultCode ? (
+      {apiAvailable === false ? (
+        <ApiUnavailableNotice feature="Removal requests" contactEmail="legal@onlytok.com" />
+      ) : resultCode ? (
         <div className="p-8 rounded-3xl bg-[#121217] border border-white/10 shadow-2xl space-y-6 text-center max-w-2xl mx-auto animate-in zoom-in-95 duration-200">
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
             <CheckCircle2 className="w-8 h-8" />

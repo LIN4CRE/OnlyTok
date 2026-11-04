@@ -1,4 +1,5 @@
 import React from 'react';
+import { assetUrl } from '../../utils/assets';
 import { ShieldCheck, Video, ExternalLink, ArrowRight } from 'lucide-react';
 import { Creator } from '../../data/contentRegistry';
 
@@ -19,7 +20,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl overflow-hidden bg-[#181822] border-2 border-[#FF2A85]/40 group-hover:border-[#FF2A85] transition-colors shadow-md">
               <img
-                src={creator.avatarUrl}
+                src={assetUrl(creator.avatarUrl)}
                 alt={`Verified creator avatar: ${creator.displayName} (${creator.username})`}
                 loading="lazy"
                 decoding="async"

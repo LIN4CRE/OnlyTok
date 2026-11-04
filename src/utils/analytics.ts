@@ -11,6 +11,8 @@
  * - Real measured events only — strictly zero fabricated statistics.
  */
 
+import { checkApiAvailability } from '../lib/api';
+
 export type AnalyticsEventType =
   | 'homepage_visit'
   | 'creator_profile_view'
@@ -47,7 +49,24 @@ function getAnonymousSessionId(): string {
 }
 
 /**
+ * Read the stored cookie-consent preferences. Analytics is opt-in under UK
+ * PECR/GDPR: events are only sent when the visitor explicitly accepted analytics.
+ */
+function hasAnalyticsConsent(): boolean {
+  try {
+    const raw = window.localStorage.getItem('ot_cookie_consent_v1');
+    if (!raw) return false;
+    const prefs = JSON.parse(raw);
+    return prefs?.analytics === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Send an event payload to the ONLYTOK privacy analytics endpoint.
+ * No-ops unless (a) the visitor consented to analytics, (b) DNT/GPC is off, and
+ * (c) the backend API is actually present (static deployments have no analytics).
  */
 export async function trackEvent(payload: AnalyticsPayload): Promise<boolean> {
   if (typeof window === 'undefined') return false;
@@ -57,6 +76,12 @@ export async function trackEvent(payload: AnalyticsPayload): Promise<boolean> {
     // If user explicitly asks not to be tracked, do not record external event
     return false;
   }
+
+  // UK PECR: analytics requires prior opt-in consent.
+  if (!hasAnalyticsConsent()) return false;
+
+  // Static deployment (no API): nothing to record — avoid futile 404 requests.
+  if (!(await checkApiAvailability())) return false;
 
   const body = JSON.stringify({
     ...payload,

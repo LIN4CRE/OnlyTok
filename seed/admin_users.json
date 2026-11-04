@@ -1,0 +1,11 @@
+[
+  {
+    "id": "adm_super_01",
+    "email": "dlinacre16@gmail.com",
+    "displayName": "Dominic Linacre",
+    "role": "super_admin",
+    "status": "active",
+    "notes": "Primary founder & master administrator.",
+    "addedAt": "2026-10-15T00:00:00.000Z"
+  }
+]

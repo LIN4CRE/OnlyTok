@@ -6,3 +6,16 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Server build output
+server.js
+
+# Runtime data stores & uploaded media (never commit personal data / uploads).
+# Fresh installs are seeded from /seed (sanitized defaults).
+data_store/
+uploads/
+
+# Local tooling caches
+.cache/
+.vercel/
+.turbo/

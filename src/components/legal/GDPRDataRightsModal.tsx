@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, Lock, Trash2, FileText, CheckCircle2, AlertTriangle, Send, Loader2 } from 'lucide-react';
+import { useApiAvailability } from '../../lib/api';
+import { ApiUnavailableNotice } from '../common/ApiUnavailableNotice';
 
 interface GDPRDataRightsModalProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ export const GDPRDataRightsModal: React.FC<GDPRDataRightsModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successCode, setSuccessCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { available: apiAvailable } = useApiAvailability();
 
   if (!isOpen) return null;
 
@@ -99,7 +102,9 @@ export const GDPRDataRightsModal: React.FC<GDPRDataRightsModalProps> = ({
           </button>
         </div>
 
-        {successCode ? (
+        {apiAvailable === false ? (
+          <ApiUnavailableNotice feature="GDPR data rights requests" contactEmail="privacy@onlytok.com" compact />
+        ) : successCode ? (
           <div className="space-y-4 text-xs">
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2">
               <div className="flex items-center gap-2 font-bold text-white text-sm">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { assetUrl } from '../../utils/assets';
 import {
   X,
   Play,
@@ -129,7 +130,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           <div className="relative aspect-[9/16] w-full max-h-[75vh] max-w-[380px] mx-auto overflow-hidden">
             {/* Visual Media Poster / Frame */}
             <img
-              src={video.thumbnailUrl}
+              src={assetUrl(video.thumbnailUrl)}
               alt={video.title}
               referrerPolicy="no-referrer"
               className={`w-full h-full object-cover transition-transform duration-700 ${
@@ -252,7 +253,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-[#222230] border-2 border-[#FF2A85] shrink-0">
                   <img
-                    src={video.thumbnailUrl}
+                    src={assetUrl(video.thumbnailUrl)}
                     alt={video.creatorName}
                     className="w-full h-full object-cover"
                   />
@@ -382,7 +383,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                 >
                   <div className="aspect-[9/16] relative overflow-hidden bg-black">
                     <img
-                      src={rel.thumbnailUrl}
+                      src={assetUrl(rel.thumbnailUrl)}
                       alt={rel.title}
                       className="w-full h-full object-cover group-hover/rel:scale-105 transition-transform"
                     />
